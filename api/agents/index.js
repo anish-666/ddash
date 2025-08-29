@@ -18,4 +18,34 @@ module.exports.handler = async (event) => {
       return { statusCode: 500, headers: corsHeaders(event), body: JSON.stringify({ error: 'missing_BOLNA_API_KEY' }) };
     }
 
-    const resp = a
+    const resp = await fetch(`${base}/v2/agent/all`, {
+      headers: { Authorization: `Bearer ${key}` }
+    });
+
+    // Handle non-200s from provider gracefully
+    if (!resp.ok) {
+      const txt = await resp.text().catch(() => '');
+      return {
+        statusCode: resp.status,
+        headers: corsHeaders(event),
+        body: JSON.stringify({ error: 'provider_error', status: resp.status, body: txt })
+      };
+    }
+
+    const agents = await resp.json().catch(() => []);
+    const items = Array.isArray(agents)
+      ? agents.map(a => ({
+          id: `agent_${a.id || a.agent_id || a.provider_agent_id || a.uuid || a.agent_name}`,
+          tenant_id: 't_demo',
+          name: a.agent_name || a.name || a.id,
+          provider_agent_id: a.id || a.agent_id || a.provider_agent_id,
+          active: true
+        }))
+      : [];
+
+    return { statusCode: 200, headers: corsHeaders(event), body: JSON.stringify(items) };
+  } catch (e) {
+    const status = e.statusCode || 500;
+    return { statusCode: status, headers: corsHeaders(event), body: JSON.stringify({ error: e.message || 'failed' }) };
+  }
+};
