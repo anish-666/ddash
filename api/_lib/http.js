@@ -1,24 +1,17 @@
-// Small wrapper around node-fetch to simplify
-// performing HTTP requests from Netlify functions.  We
-// always parse JSON when possible and throw errors on
-// non‑successful responses.
-
-const fetch = require('node-fetch');
-
+// api/_lib/http.js (CJS)
 async function request(url, options = {}) {
   const res = await fetch(url, options);
+  const text = await res.text().catch(() => '');
+  let json;
+  try { json = text ? JSON.parse(text) : null; } catch { json = null; }
+
   if (!res.ok) {
-    const text = await res.text();
-    const message = text || res.statusText;
-    const err = new Error(message);
+    const msg = (json && (json.error || json.message || json.detail)) || res.statusText;
+    const err = new Error(msg || 'http_error');
     err.statusCode = res.status;
+    err.body = json || text;
     throw err;
   }
-  const contentType = res.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    return res.json();
-  }
-  return res.text();
+  return json;
 }
-
 module.exports = { request };
