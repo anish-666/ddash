@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api } from '../lib/api';
 
-const OUTBOUND_CALLER = import.meta.env.OUTBOUND_CALLER_ID || '';
+const OUTBOUND_CALLER = import.meta.env.VITE_OUTBOUND_CALLER_ID || '';
 
 export default function Conversations() {
   const [rows, setRows] = useState([]);
