@@ -4,7 +4,7 @@ const { query, ensureSchema } = require('./_lib/db.js');
 
 function daysToInt(win) {
   const m = String(win || '').match(/^(\d+)\s*d$/i);
-  return m ? Math.max(1, Math.min(90, parseInt(m[1],10))) : 7;
+  return m ? Math.max(1, Math.min(90, parseInt(m[1], 10))) : 7;
 }
 
 module.exports.handler = async (event) => {
@@ -17,7 +17,7 @@ module.exports.handler = async (event) => {
 
     const qs = event.queryStringParameters || {};
     const windowDays = daysToInt(qs.window || '7d');
-    const fromTs = new Date(Date.now() - windowDays*24*60*60*1000).toISOString();
+    const fromTs = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
 
     const OUTBOUND = process.env.OUTBOUND_CALLER_ID || null;
 
@@ -61,11 +61,11 @@ module.exports.handler = async (event) => {
       body: JSON.stringify({
         windowDays,
         labels: rows.map(r => r.day),
-        total: rows.map(r => Number(r.total||0)),
-        inbound: rows.map(r => Number(r.inbound||0)),
-        outbound: rows.map(r => Number(r.outbound||0)),
-        completed: rows.map(r => Number(r.completed||0)),
-        avgDuration: rows.map(r => Number(r.avg_duration_sec||0))
+        total: rows.map(r => Number(r.total || 0)),
+        inbound: rows.map(r => Number(r.inbound || 0)),
+        outbound: rows.map(r => Number(r.outbound || 0)),
+        completed: rows.map(r => Number(r.completed || 0)),
+        avgDuration: rows.map(r => Number(r.avg_duration_sec || 0))
       })
     };
   } catch (e) {
