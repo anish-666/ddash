@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useAuth } from '../lib/useAuth.jsx';
 
 export default function Login() {
@@ -29,17 +29,47 @@ export default function Login() {
 
   return (
     <div className="login-wrap">
-      <form className="card stack" onSubmit={onSubmit}>
-        <h1>Sign in</h1>
-        <label className="label">Email</label>
-        <input className="input" type="email" value={email} onChange={e=>setEmail(e.target.value)} required />
-        <label className="label">Password</label>
-        <input className="input" type="password" value={password} onChange={e=>setPassword(e.target.value)} required />
-        {err && <div className="error">{err}</div>}
-        <button className="btn btn-primary" disabled={loading}>
-          {loading ? 'Signing in…' : 'Sign in'}
-        </button>
-      </form>
+      <div className="login-panel card">
+        <div className="login-header">
+          <div className="login-brand">Docvai</div>
+          <div className="login-title">Docvai Dashboard</div>
+          <div className="login-subtitle">Sign in to continue</div>
+        </div>
+
+        <form className="stack" onSubmit={onSubmit}>
+          <label className="label">Email</label>
+          <input
+            className="input"
+            type="email"
+            value={email}
+            onChange={e=>setEmail(e.target.value)}
+            placeholder="you@docvai.com"
+            required
+            autoFocus
+          />
+
+          <label className="label">Password</label>
+          <input
+            className="input"
+            type="password"
+            value={password}
+            onChange={e=>setPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+          />
+
+          {err && <div className="error">{err}</div>}
+
+          <button className="btn btn-primary" disabled={loading}>
+            {loading ? 'Signing in…' : 'Sign in'}
+          </button>
+        </form>
+
+        <div className="login-footer muted">
+          <span>Need access?</span>{' '}
+          <Link to="#" onClick={e=>e.preventDefault()}>contact admin</Link>
+        </div>
+      </div>
     </div>
   );
 }
