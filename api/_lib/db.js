@@ -24,6 +24,7 @@ async function query(text, params) {
   return p.query(text, params);
 }
 
+// Auto-create / migrate schema (adds transcript_text if missing)
 async function ensureSchema() {
   const sql = `
   CREATE TABLE IF NOT EXISTS docvai_calls (
@@ -36,11 +37,15 @@ async function ensureSchema() {
     duration_sec INTEGER,
     recording_url TEXT,
     transcript_url TEXT,
+    transcript_text TEXT,
     started_at TIMESTAMPTZ,
     ended_at TIMESTAMPTZ,
     payload JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
+  DO $$ BEGIN
+    ALTER TABLE docvai_calls ADD COLUMN IF NOT EXISTS transcript_text TEXT;
+  EXCEPTION WHEN duplicate_column THEN NULL; END $$;
   CREATE INDEX IF NOT EXISTS idx_docvai_calls_created_at ON docvai_calls(created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_docvai_calls_provider_call_id ON docvai_calls(provider_call_id);
   `;
