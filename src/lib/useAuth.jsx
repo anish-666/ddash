@@ -9,24 +9,28 @@ export function AuthProvider({ children }) {
 
   async function bootstrap() {
     try {
-      const r = await api.whoami(); // hits /.netlify/functions/whoami
+      const r = await api.whoami();
       if (r?.ok && r?.user) setUser(r.user);
-    } catch { /* not logged in */ }
-    setReady(true);
+      else setUser(null);
+    } catch {
+      setUser(null);
+    } finally {
+      setReady(true);
+    }
   }
 
   useEffect(() => { bootstrap(); }, []);
 
   async function login(email, password) {
+    // if DISABLE_AUTH=1, backend returns ok without real check
     const r = await api.login(email, password);
-    // After login, re-bootstrap to read cookie-based session
+    // refresh session from cookie
     await bootstrap();
     return r;
   }
 
-  async function logout() {
-    // Clear cookie by setting Max-Age=0 (add a tiny endpoint if you want).
-    // For now, just clear client and reload.
+  function logout() {
+    // optional: add a /logout function to clear cookie; for now just reset client
     setUser(null);
     window.location.href = '/login';
   }
