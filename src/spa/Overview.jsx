@@ -18,17 +18,17 @@ const COLORS = {
 
 function Kpi({ label, value, color }) {
   return (
-    <div className="card" style={{ padding: 12, borderLeft: `5px solid ${color}` }}>
+    <div className="card" style={{ padding: 10, borderLeft: `4px solid ${color}`, minHeight: 64 }}>
       <div className="muted" style={{ fontSize: 12, lineHeight: 1 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>{value}</div>
+      <div style={{ fontSize: 20, fontWeight: 700, lineHeight: 1.2 }}>{value}</div>
     </div>
   );
 }
 
-function ChartCard({ title, children, height = 260 }) {
+function ChartCard({ title, children, height = 200 }) {
   return (
-    <div className="card" style={{ padding: 12 }}>
-      <div className="card-title">{title}</div>
+    <div className="card" style={{ padding: 10 }}>
+      <div className="card-title" style={{ marginBottom: 6 }}>{title}</div>
       <div style={{ height, position: 'relative' }}>
         {children}
       </div>
@@ -69,12 +69,19 @@ export default function Overview() {
   const dAvg = ts?.avgDuration || [];
 
   return (
-    <div className="stack-lg">
+    <div className="stack-lg" style={{ maxWidth: 1200, margin: '0 auto' }}>
       <h1>Overview</h1>
       {err && <div className="error">{err}</div>}
 
-      {/* Compact KPI grid: auto-fit 150px min-width tiles */}
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+      {/* Compact KPI grid: 3 per row on desktop, auto-wrap on smaller screens */}
+      <div
+        className="grid"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+          gap: 10
+        }}
+      >
         <Kpi label="Total calls" value={k.total} color={COLORS.total} />
         <Kpi label="Inbound" value={k.inbound} color={COLORS.inbound} />
         <Kpi label="Outbound" value={k.outbound} color={COLORS.outbound} />
@@ -83,26 +90,36 @@ export default function Overview() {
         <Kpi label="Transcripts" value={k.transcripts} color={COLORS.transcripts} />
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', gap: 12, marginTop: 12 }}>
-        <ChartCard title="Calls per day">
+      {/* Charts row: line + stacked bars */}
+      <div
+        className="grid"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '2fr 1fr',
+          gap: 10,
+          marginTop: 10
+        }}
+      >
+        <ChartCard title="Calls per day" height={220}>
           <Line
             data={{
               labels,
               datasets: [
-                { label: 'Total', data: dTotal, borderColor: COLORS.total, backgroundColor: COLORS.total, tension: 0.3 },
-                { label: 'Completed', data: dCompleted, borderColor: COLORS.completed, backgroundColor: COLORS.completed, tension: 0.3 }
+                { label: 'Total', data: dTotal, borderColor: COLORS.total, backgroundColor: COLORS.total, tension: 0.3, pointRadius: 2, borderWidth: 2 },
+                { label: 'Completed', data: dCompleted, borderColor: COLORS.completed, backgroundColor: COLORS.completed, tension: 0.3, pointRadius: 2, borderWidth: 2 }
               ]
             }}
             options={{
               responsive: true,
               maintainAspectRatio: false,
               plugins: { legend: { position: 'bottom' } },
-              interaction: { intersect: false, mode: 'nearest' }
+              interaction: { intersect: false, mode: 'nearest' },
+              scales: { y: { ticks: { precision: 0 } } }
             }}
           />
         </ChartCard>
 
-        <ChartCard title="Inbound vs Outbound">
+        <ChartCard title="Inbound vs Outbound" height={220}>
           <Bar
             data={{
               labels,
@@ -115,31 +132,44 @@ export default function Overview() {
               responsive: true,
               maintainAspectRatio: false,
               plugins: { legend: { position: 'bottom' } },
-              scales: { x: { stacked: true }, y: { stacked: true } }
+              scales: {
+                x: { stacked: true },
+                y: { stacked: true, ticks: { precision: 0 } }
+              }
             }}
           />
         </ChartCard>
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
-        <ChartCard title="Average duration (s)" height={220}>
+      {/* Second row: smaller charts */}
+      <div
+        className="grid"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '1fr 1fr',
+          gap: 10,
+          marginTop: 10
+        }}
+      >
+        <ChartCard title="Average duration (s)" height={180}>
           <Line
             data={{
               labels,
               datasets: [
-                { label: 'Avg duration (s)', data: dAvg, borderColor: COLORS.avg, backgroundColor: COLORS.avg, tension: 0.3 }
+                { label: 'Avg duration (s)', data: dAvg, borderColor: COLORS.avg, backgroundColor: COLORS.avg, tension: 0.3, pointRadius: 2, borderWidth: 2 }
               ]
             }}
             options={{
               responsive: true,
               maintainAspectRatio: false,
               plugins: { legend: { position: 'bottom' } },
-              interaction: { intersect: false, mode: 'nearest' }
+              interaction: { intersect: false, mode: 'nearest' },
+              scales: { y: { ticks: { precision: 0 } } }
             }}
           />
         </ChartCard>
 
-        <ChartCard title="Transcripts captured" height={220}>
+        <ChartCard title="Transcripts captured" height={180}>
           <Bar
             data={{
               labels: ['Last 7 days'],
@@ -151,7 +181,8 @@ export default function Overview() {
             options={{
               responsive: true,
               maintainAspectRatio: false,
-              plugins: { legend: { position: 'bottom' } }
+              plugins: { legend: { position: 'bottom' } },
+              scales: { y: { ticks: { precision: 0 } } }
             }}
           />
         </ChartCard>
