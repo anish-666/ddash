@@ -4,7 +4,7 @@ const { query, ensureSchema } = require('./_lib/db.js');
 
 function daysToInt(win) {
   const m = String(win || '').match(/^(\d+)\s*d$/i);
-  return m ? Math.max(1, Math.min(90, parseInt(m[1],10))) : 7;
+  return m ? Math.max(1, Math.min(90, parseInt(m[1], 10))) : 7;
 }
 
 module.exports.handler = async (event) => {
@@ -17,7 +17,7 @@ module.exports.handler = async (event) => {
 
     const qs = event.queryStringParameters || {};
     const windowDays = daysToInt(qs.window || '7d');
-    const fromTs = new Date(Date.now() - windowDays*24*60*60*1000).toISOString();
+    const fromTs = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
 
     const OUTBOUND = process.env.OUTBOUND_CALLER_ID || null;
 
@@ -79,13 +79,13 @@ module.exports.handler = async (event) => {
       body: JSON.stringify({
         windowDays,
         totals: {
-          total: Number(s.total_calls||0),
-          inbound: Number(s.inbound_calls||0),
-          outbound: Number(s.outbound_calls||0),
-          completed: Number(s.completed_calls||0),
-          avgDurationSec: Number(s.avg_duration_sec||0),
-          recordings: Number(s.with_recordings||0),
-          transcripts: Number(s.with_transcripts||0)
+          total: Number(s.total_calls || 0),
+          inbound: Number(s.inbound_calls || 0),
+          outbound: Number(s.outbound_calls || 0),
+          completed: Number(s.completed_calls || 0),
+          avgDurationSec: Number(s.avg_duration_sec || 0),
+          recordings: Number(s.with_recordings || 0),
+          transcripts: Number(s.with_transcripts || 0)
         }
       })
     };
