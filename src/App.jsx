@@ -5,45 +5,49 @@ import Overview from './spa/Overview.jsx';
 import Agents from './spa/Agents.jsx';
 import Outbound from './spa/Outbound.jsx';
 import Campaigns from './spa/Campaigns.jsx';
-import Login from './spa/Login.jsx';
 import Conversations from './spa/Conversations.jsx';
+import Login from './spa/Login.jsx';
 
-// A simple component that guards a route.  If the user
-// is not authenticated, it redirects to the login
-// page.  Otherwise it renders its children.
+// Simple protected-route wrapper for React Router v6
 function ProtectedRoute({ children }) {
   const { user } = useAuth();
   const location = useLocation();
   if (!user) {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+    return <Navigate to="/login" replace state={{ from: location }} />;
   }
   return children;
 }
 
-// Layout shell that renders the top navigation and
-// outlet for nested routes.  It shows nothing if the
-// user is not present so that the login page can take
-// over the full screen.
-function Shell() {
+function Layout() {
   const { user, logout } = useAuth();
-  if (!user) {
-    return <Outlet />;
-  }
+
   return (
     <div className="app-shell">
-      <nav className="topbar">
-        <div className="logo">Docvai</div>
-        <ul className="nav-links">
-          <li><Link to="/overview">Overview</Link></li>
-          <li><Link to="/agents">Agents</Link></li>
-          <li><Link to="/outbound">Outbound</Link></li>
-          <li><Link to="/campaigns">Campaigns</Link></li>
-          <li><Link to="/conversations">Conversations</Link></li>
+      <aside className="sidebar">
+        <div className="brand">Docvai</div>
+        <nav>
+          <ul>
+            <li><Link to="/">Overview</Link></li>
+            <li><Link to="/agents">Agents</Link></li>
+            <li><Link to="/outbound">Outbound</Link></li>
+            <li><Link to="/campaigns">Campaigns</Link></li>
+            <li><Link to="/conversations">Conversations</Link></li>
+          </ul>
+        </nav>
+        <div className="spacer" />
+        <div className="userSection">
+          {user ? (
+            <>
+              <div className="muted">{user.email}</div>
+              <button className="btn btn-secondary" onClick={logout}>Logout</button>
+            </>
+          ) : (
+            <Link className="btn btn-primary" to="/login">Login</Link>
+          )}
+        </div>
+      </aside>
 
-        </ul>
-        <button className="btn" onClick={logout}>Logout</button>
-      </nav>
-      <main className="main-content">
+      <main className="content">
         <Outlet />
       </main>
     </div>
@@ -54,52 +58,23 @@ export default function App() {
   return (
     <AuthProvider>
       <Routes>
+        {/* Public routes */}
         <Route path="/login" element={<Login />} />
-        <Route element={<Shell />}>
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <Overview />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/overview"
-            element={
-              <ProtectedRoute>
-                <Overview />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/agents"
-            element={
-              <ProtectedRoute>
-                <Agents />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/outbound"
-            element={
-              <ProtectedRoute>
-                <Outbound />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/campaigns"
-            element={
-              <ProtectedRoute>
-                <Campaigns />
-              </ProtectedRoute>
-            }
-            <Route path="/conversations" element={<Conversations />} />
 
-          />
+        {/* Private app under the Layout */}
+        <Route element={
+          <ProtectedRoute>
+            <Layout />
+          </ProtectedRoute>
+        }>
+          <Route index element={<Overview />} />
+          <Route path="/agents" element={<Agents />} />
+          <Route path="/outbound" element={<Outbound />} />
+          <Route path="/campaigns" element={<Campaigns />} />
+          <Route path="/conversations" element={<Conversations />} />
         </Route>
-        {/* catch all unknown routes and redirect to home */}
+
+        {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AuthProvider>
