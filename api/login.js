@@ -3,10 +3,15 @@ const COOKIE_NAME = 'docvai_auth';
 const SECRET = process.env.JWT_SECRET || 'supersecret';
 const DISABLE = process.env.DISABLE_AUTH === '1';
 
-// Simple CORS headers so you can hit the function from the SPA
-function corsHeaders() {
+// Allow-list: if you set PUBLIC_SITE_URL, we echo it back for CORS (needed with credentials)
+// Otherwise we reflect the incoming Origin for local dev. Adjust as needed for security.
+function corsHeaders(event) {
+  const incomingOrigin =
+    (event.headers && (event.headers.origin || event.headers.Origin)) || '*';
+  const siteOrigin = process.env.PUBLIC_SITE_URL || incomingOrigin;
+
   return {
-    'Access-Control-Allow-Origin': process.env.PUBLIC_SITE_URL || '*',
+    'Access-Control-Allow-Origin': siteOrigin,
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
@@ -14,19 +19,36 @@ function corsHeaders() {
   };
 }
 
-function json(statusCode, body, extra = {}) {
+function json(event, statusCode, body, extra = {}) {
   return {
     statusCode,
-    headers: { ...corsHeaders(), ...extra },
+    headers: { ...corsHeaders(event), ...extra },
     body: JSON.stringify(body ?? null),
   };
 }
 
-function setCookieHeader(value, maxAgeSeconds = 60 * 60 * 24 * 7) {
-  // super simple cookie; replace with a signed JWT in production
+// Return ONLY the cookie string (no "Set-Cookie," prefix)
+function makeCookie(value, maxAgeSeconds = 60 * 60 * 24 * 7) {
   const sameSite = 'Lax';
-  const secure = 'Secure'; // Netlify over HTTPS
-  return `Set-Cookie, ${COOKIE_NAME}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSeconds}; HttpOnly; ${secure}; SameSite=${sameSite}`;
+  const secure = 'Secure'; // Netlify serves HTTPS
+  return `${COOKIE_NAME}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSeconds}; HttpOnly; ${secure}; SameSite=${sameSite}`;
+}
+
+function parseDemoUsers() {
+  const raw = process.env.DEMO_USERS || '[]';
+  try {
+    // Must be valid JSON with double quotes
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) {
+    // Surface formatting issues clearly
+    const msg = `invalid_DEMO_USERS_JSON`;
+    const hint = `Ensure DEMO_USERS is valid JSON with double quotes: [{"email":"demo@docvai.com","password":"demo123"}]`;
+    const err = new Error(`${msg}: ${e.message}`);
+    err.statusCode = 400;
+    err.hint = hint;
+    throw err;
+  }
 }
 
 module.exports.handler = async (event) => {
@@ -36,58 +58,74 @@ module.exports.handler = async (event) => {
   if (method === 'OPTIONS') {
     return {
       statusCode: 200,
-      headers: corsHeaders(),
+      headers: corsHeaders(event),
       body: '',
     };
   }
 
-  // 2) GET health/diagnostic (avoid console 500s if someone GETs this URL)
+  // 2) GET health check (avoid console 500s if something GETs this)
   if (method === 'GET') {
-    return json(200, { ok: true, message: 'login endpoint ready', method });
+    return json(event, 200, { ok: true, message: 'login endpoint ready', method });
   }
 
   // 3) Only POST performs a login
   if (method !== 'POST') {
-    return json(405, { error: 'method_not_allowed' });
+    return json(event, 405, { error: 'method_not_allowed' });
   }
 
   try {
     const { email, password } = JSON.parse(event.body || '{}');
 
+    const emailNorm = (email || '').trim().toLowerCase();
+    const passNorm  = (password || '').trim();
+
+    if (!emailNorm || !passNorm) {
+      return json(event, 400, { error: 'missing_credentials' });
+    }
+
     if (DISABLE) {
-      // Auth bypass for setup
-      const user = { email: email || 'bypass@docvai.com', name: 'Bypass User' };
+      // Bypass path for setup
+      const user = { email: emailNorm, name: 'Bypass User' };
       return {
         statusCode: 200,
         headers: {
-          ...corsHeaders(),
-          // set a very basic cookie just so the SPA can feel logged-in
-          'Set-Cookie': setCookieHeader(`${user.email}|${SECRET}`)
+          ...corsHeaders(event),
+          'Set-Cookie': makeCookie(`${user.email}|${SECRET}`)
         },
         body: JSON.stringify(user),
       };
     }
 
-    // Optional: support DEMO_USERS JSON array
-    const raw = process.env.DEMO_USERS || '[]';
-    let demos = [];
-    try { demos = JSON.parse(raw); } catch {}
+    // Parse demo users from ENV
+    const demos = parseDemoUsers();
 
-    const found = Array.isArray(demos) && demos.find(u => u.email === email && u.password === password);
+    // Case-insensitive email match, exact password match
+    const found = demos.find(u =>
+      ((u.email || '').trim().toLowerCase() === emailNorm) &&
+      (String(u.password || '') === passNorm)
+    );
+
     if (!found) {
-      return json(401, { error: 'invalid_credentials' });
+      return json(event, 401, {
+        error: 'invalid_credentials',
+        reason: 'no_demo_user_match',
+        hint: 'Check DEMO_USERS JSON, email/password case, whitespace'
+      });
     }
 
     const user = { email: found.email, name: found.name || 'Demo User' };
     return {
       statusCode: 200,
       headers: {
-        ...corsHeaders(),
-        'Set-Cookie': setCookieHeader(`${user.email}|${SECRET}`)
+        ...corsHeaders(event),
+        'Set-Cookie': makeCookie(`${user.email}|${SECRET}`)
       },
       body: JSON.stringify(user),
     };
   } catch (e) {
-    return json(500, { error: e.message || 'login_failed' });
+    const status = e.statusCode || 500;
+    const body = { error: e.message || 'login_failed' };
+    if (e.hint) body.hint = e.hint;
+    return json(event, status, body);
   }
 };
