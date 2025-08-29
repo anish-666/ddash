@@ -1,4 +1,4 @@
-// api/_lib/http.js (CJS)
+// api/_lib/http.js
 async function request(url, options = {}) {
   const res = await fetch(url, options);
   const text = await res.text().catch(() => '');
@@ -14,4 +14,5 @@ async function request(url, options = {}) {
   }
   return json;
 }
+
 module.exports = { request };
