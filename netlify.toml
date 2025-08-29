@@ -1,0 +1,31 @@
+## Netlify configuration for Docvai Dashboard
+
+# This file defines the build command, publish folder,
+# and serverless functions folder for Netlify.  A
+# functions folder of `api` means any JavaScript file
+# placed under `api/` will automatically be compiled
+# and deployed as an AWS Lambda.  The redirect rules
+# below route API calls to those serverless functions
+# and provide an SPA fallback so your React app can
+# handle client‑side routing.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "api"
+
+[[redirects]]
+  # Route all calls under /api/* to the corresponding
+  # Netlify function.  The :splat syntax passes through
+  # the remainder of the path so e.g. /api/agents/123
+  # becomes /.netlify/functions/agents/123.
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  # SPA fallback: route all other requests to index.html.
+  from = "/*"
+  to = "/index.html"
+  status = 200
