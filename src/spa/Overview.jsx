@@ -91,55 +91,55 @@ export default function Overview() {
       </div>
 
       {/* Charts row: line + stacked bars */}
-      <div
-        className="grid"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: '2fr 1fr',
-          gap: 10,
-          marginTop: 10
-        }}
-      >
-        <ChartCard title="Calls per day" height={220}>
-          <Line
-            data={{
-              labels,
-              datasets: [
-                { label: 'Total', data: dTotal, borderColor: COLORS.total, backgroundColor: COLORS.total, tension: 0.3, pointRadius: 2, borderWidth: 2 },
-                { label: 'Completed', data: dCompleted, borderColor: COLORS.completed, backgroundColor: COLORS.completed, tension: 0.3, pointRadius: 2, borderWidth: 2 }
-              ]
-            }}
-            options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: { legend: { position: 'bottom' } },
-              interaction: { intersect: false, mode: 'nearest' },
-              scales: { y: { ticks: { precision: 0 } } }
-            }}
-          />
-        </ChartCard>
+   <div
+  className="grid"
+  style={{
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: 10,
+    marginTop: 10
+  }}
+>
+  <ChartCard title="Calls per day" height={200}>
+    <Line
+      data={{
+        labels,
+        datasets: [
+          { label: 'Total', data: dTotal, borderColor: COLORS.total, backgroundColor: COLORS.total, tension: 0.3, pointRadius: 2, borderWidth: 2 },
+          { label: 'Completed', data: dCompleted, borderColor: COLORS.completed, backgroundColor: COLORS.completed, tension: 0.3, pointRadius: 2, borderWidth: 2 }
+        ]
+      }}
+      options={{
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+        interaction: { intersect: false, mode: 'nearest' },
+        scales: { y: { ticks: { precision: 0 } } }
+      }}
+    />
+  </ChartCard>
 
-        <ChartCard title="Inbound vs Outbound" height={220}>
-          <Bar
-            data={{
-              labels,
-              datasets: [
-                { label: 'Inbound', data: dInbound, backgroundColor: COLORS.inbound, stack: 'calls' },
-                { label: 'Outbound', data: dOutbound, backgroundColor: COLORS.outbound, stack: 'calls' }
-              ]
-            }}
-            options={{
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: { legend: { position: 'bottom' } },
-              scales: {
-                x: { stacked: true },
-                y: { stacked: true, ticks: { precision: 0 } }
-              }
-            }}
-          />
-        </ChartCard>
-      </div>
+  <ChartCard title="Inbound vs Outbound" height={200}>
+    <Bar
+      data={{
+        labels,
+        datasets: [
+          { label: 'Inbound', data: dInbound, backgroundColor: COLORS.inbound, stack: 'calls' },
+          { label: 'Outbound', data: dOutbound, backgroundColor: COLORS.outbound, stack: 'calls' }
+        ]
+      }}
+      options={{
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { position: 'bottom' } },
+        scales: {
+          x: { stacked: true },
+          y: { stacked: true, ticks: { precision: 0 } }
+        }
+      }}
+    />
+  </ChartCard>
+</div>
 
       {/* Second row: smaller charts */}
       <div
