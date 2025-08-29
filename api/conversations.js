@@ -11,7 +11,7 @@ module.exports.handler = async (event) => {
 
     const res = await query(
       `SELECT id, provider_call_id, agent_id, to_number, from_number, status, duration_sec,
-              recording_url, transcript_url, started_at, ended_at, created_at
+              recording_url, transcript_url, transcript_text, started_at, ended_at, created_at
          FROM docvai_calls
         ORDER BY created_at DESC
         LIMIT 200`
