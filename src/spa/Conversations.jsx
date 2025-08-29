@@ -4,14 +4,27 @@ import { api } from '../lib/api';
 export default function Conversations() {
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(null);
 
-  useEffect(() => {
-    let live = true;
-    api.conversations()
-      .then(d => live && setRows(Array.isArray(d) ? d : []))
-      .catch(e => live && setErr(e.message || 'Failed to load'));
-    return () => { live = false; };
-  }, []);
+  async function load() {
+    setErr('');
+    try { setRows(await api.conversations()); }
+    catch(e){ setErr(e.message || 'Failed to load'); }
+  }
+
+  useEffect(() => { load(); }, []);
+
+  async function refreshRow(r) {
+    if (!r.provider_call_id) return;
+    setBusy(r.provider_call_id);
+    try {
+      const res = await fetch(`${import.meta.env.VITE_API_BASE || '/.netlify/functions'}/provider-poll?id=${encodeURIComponent(r.provider_call_id)}`, { credentials: 'include' });
+      await res.text(); // ignore body; we reload below
+      await load();
+    } finally {
+      setBusy(null);
+    }
+  }
 
   return (
     <div className="stack-lg">
@@ -28,6 +41,7 @@ export default function Conversations() {
               <th>Duration</th>
               <th>Recording</th>
               <th>Transcript</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
@@ -38,19 +52,19 @@ export default function Conversations() {
                 <td>{r.from_number || '-'}</td>
                 <td>{r.status || '-'}</td>
                 <td>{Number.isFinite(r.duration_sec) ? `${r.duration_sec}s` : '-'}</td>
+                <td>{r.recording_url ? <audio controls src={r.recording_url} style={{ maxWidth: 220 }} /> : '—'}</td>
+                <td>{r.transcript_url ? <a href={r.transcript_url} target="_blank" rel="noreferrer">Open</a> : '—'}</td>
                 <td>
-                  {r.recording_url ? (
-                    <audio controls src={r.recording_url} style={{ maxWidth: 220 }} />
-                  ) : '—'}
-                </td>
-                <td>
-                  {r.transcript_url ? <a href={r.transcript_url} target="_blank" rel="noreferrer">Open</a> : '—'}
+                  {(!r.recording_url && r.provider_call_id) &&
+                    <button className="btn btn-secondary" onClick={()=>refreshRow(r)} disabled={busy === r.provider_call_id}>
+                      {busy === r.provider_call_id ? 'Refreshing…' : 'Refresh'}
+                    </button>}
                 </td>
               </tr>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan="7" style={{ textAlign: 'center', padding: '1rem' }}>
-                No conversations yet. Make a call and ensure Bolna webhook points to this site.
+              <tr><td colSpan="8" style={{ textAlign: 'center', padding: '1rem' }}>
+                No conversations yet. Make a call (trial: to verified numbers). Then click Refresh if needed.
               </td></tr>
             )}
           </tbody>
