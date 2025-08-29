@@ -6,6 +6,7 @@ import Agents from './spa/Agents.jsx';
 import Outbound from './spa/Outbound.jsx';
 import Campaigns from './spa/Campaigns.jsx';
 import Login from './spa/Login.jsx';
+import Conversations from './spa/Conversations.jsx';
 
 // A simple component that guards a route.  If the user
 // is not authenticated, it redirects to the login
@@ -37,6 +38,8 @@ function Shell() {
           <li><Link to="/agents">Agents</Link></li>
           <li><Link to="/outbound">Outbound</Link></li>
           <li><Link to="/campaigns">Campaigns</Link></li>
+          <li><Link to="/conversations">Conversations</Link></li>
+
         </ul>
         <button className="btn" onClick={logout}>Logout</button>
       </nav>
@@ -92,6 +95,8 @@ export default function App() {
                 <Campaigns />
               </ProtectedRoute>
             }
+            <Route path="/conversations" element={<Conversations />} />
+
           />
         </Route>
         {/* catch all unknown routes and redirect to home */}
