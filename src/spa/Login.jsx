@@ -52,8 +52,8 @@ export default function Login() {
           className="login-header"
           style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginBottom: 12 }}
         >
-          <img src="/logo.png" alt="Docvai logo" style={{ height: 64 }} />
-          <div className="login-title" style={{ margin: 0, fontWeight: 700, fontSize: 20 }}>Docvai Dashboard</div>
+          <img src="/logo.png" alt="Docvai logo" style={{ height: 128 }} />
+          <div className="login-title" style={{ margin: 0, fontWeight: 700, fontSize: 20 }}>Dashboard</div>
           <div className="login-subtitle" style={{ margin: 0, fontSize: 13, color: '#64748b' }}>
             Sign in to continue
           </div>
