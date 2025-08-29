@@ -5,6 +5,7 @@ export default function Conversations() {
   const [rows, setRows] = useState([]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(null);
+  const [openText, setOpenText] = useState(null);
 
   async function load() {
     setErr('');
@@ -21,7 +22,6 @@ export default function Conversations() {
       const base = import.meta.env.VITE_API_BASE || '/.netlify/functions';
       const res = await fetch(`${base}/provider-poll?id=${encodeURIComponent(r.provider_call_id)}`, { credentials: 'include' });
       const json = await res.json().catch(()=>null);
-      // 🔎 Log everything we got back from the provider (for mapping)
       console.groupCollapsed('Provider poll', r.provider_call_id);
       console.log(json);
       console.groupEnd();
@@ -57,8 +57,18 @@ export default function Conversations() {
                 <td>{r.from_number || '-'}</td>
                 <td>{r.status || '-'}</td>
                 <td>{Number.isFinite(r.duration_sec) ? `${r.duration_sec}s` : '-'}</td>
-                <td>{r.recording_url ? <audio controls src={r.recording_url} style={{ maxWidth: 220 }} /> : '—'}</td>
-                <td>{r.transcript_url ? <a href={r.transcript_url} target="_blank" rel="noreferrer">Open</a> : '—'}</td>
+                <td>
+                  {r.recording_url
+                    ? <audio controls src={r.recording_url} style={{ maxWidth: 220 }} />
+                    : '—'}
+                </td>
+                <td>
+                  {r.transcript_url
+                    ? <a href={r.transcript_url} target="_blank" rel="noreferrer">Open</a>
+                    : (r.transcript_text
+                        ? <button className="btn" onClick={()=>setOpenText(r.transcript_text)}>View</button>
+                        : '—')}
+                </td>
                 <td>
                   {r.provider_call_id &&
                     <button className="btn btn-secondary" onClick={()=>refreshRow(r)} disabled={busy === r.provider_call_id}>
@@ -75,6 +85,24 @@ export default function Conversations() {
           </tbody>
         </table>
       </div>
+
+      {openText && (
+        <div style={{
+          position:'fixed', inset:0, background:'rgba(0,0,0,0.4)',
+          display:'flex', alignItems:'center', justifyContent:'center', padding:16
+        }}
+          onClick={()=>setOpenText(null)}
+        >
+          <div className="card" style={{ maxWidth: 640, width:'100%', maxHeight: '80vh', overflow:'auto' }}
+               onClick={(e)=>e.stopPropagation()}>
+            <div className="card-title">Transcript</div>
+            <pre className="pre" style={{ whiteSpace:'pre-wrap' }}>{openText}</pre>
+            <div style={{ display:'flex', justifyContent:'flex-end' }}>
+              <button className="btn" onClick={()=>setOpenText(null)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
