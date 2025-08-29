@@ -32,7 +32,7 @@ export default function Login() {
       <div className="login-panel card">
         <div className="login-header">
           <div className="login-brand">Docvai</div>
-          <div className="login-title">Docvai Dashboard</div>
+          <div className="login-title">Dashboard</div>
           <div className="login-subtitle">Sign in to continue</div>
         </div>
 
