@@ -36,7 +36,7 @@ export default function Login() {
     alt="Docvai logo"
     style={{ height: 128, margin: '0 auto' }}
   />
-  <div className="login-title" style={{ marginTop: 8 }}>Dashboard</div>
+  <div className="login-title" style={{ marginTop: 4 }}>Dashboard</div>
   <div className="login-subtitle">Sign in to continue</div>
 
         </div>
