@@ -25,7 +25,7 @@ function Layout() {
     <div className="app-shell">
       <aside className="sidebar">
        <div className="brand">
-  <img src="/logo.png" alt="Docvai" style={{ height: 64 }} />
+  <img src="/logo.png" alt="Docvai" style={{ height: 128 }} />
 </div>
 
         <nav>
