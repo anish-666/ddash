@@ -1,4 +1,3 @@
-// src/lib/api.js
 const BASE = import.meta.env.VITE_API_BASE || '/.netlify/functions';
 
 async function http(path, init) {
@@ -8,17 +7,17 @@ async function http(path, init) {
     ...init
   });
   const txt = await res.text();
-  let data;
-  try { data = txt ? JSON.parse(txt) : null } catch { data = { raw: txt } }
+  let data; try { data = txt ? JSON.parse(txt) : null; } catch { data = { raw: txt }; }
   if (!res.ok) {
-    const errMsg = (data && (data.detail || data.message || data.error)) || res.statusText;
-    throw new Error(`${res.status} ${errMsg}`);
+    const msg = (data && (data.detail || data.message || data.error)) || res.statusText;
+    throw new Error(`${res.status} ${msg}`);
   }
   return data;
 }
 
 export const api = {
   login: (email, password) => http('/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
+  whoami: () => http('/whoami'),
   agents: () => http('/agents'),
   outbound: (numbers, agentId) => http('/calls-outbound', { method: 'POST', body: JSON.stringify({ numbers, agentId }) }),
   analyticsSummary: (window='7d') => http(`/analytics-summary?window=${encodeURIComponent(window)}`),
