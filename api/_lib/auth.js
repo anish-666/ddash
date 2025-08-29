@@ -1,32 +1,34 @@
-// Authentication helper used by Netlify functions.  It
-// supports an optional bypass via the DISABLE_AUTH
-// environment variable and simple API key based auth.
-
+// api/_lib/auth.js (CJS)
+const COOKIE_NAME = 'docvai_auth';
 const SECRET = process.env.JWT_SECRET || 'supersecret';
+const BYPASS = process.env.DISABLE_AUTH === '1';
 
-/**
- * Require the user to be authenticated.  When
- * DISABLE_AUTH=1 any request will pass through and
- * return a dummy user.  Otherwise an X-Admin-Key
- * header equal to JWT_SECRET is expected.  If neither
- * are satisfied this function throws an error with a
- * 401 statusCode which is handled by the caller.
- *
- * @param {Object} event The Netlify function event
- * @returns {Object} A user object if authenticated
- */
-function requireAuth(event) {
-  const bypass = process.env.DISABLE_AUTH === '1';
-  if (bypass) {
-    return { email: 'bypass@docvai.com', name: 'Bypass User' };
-  }
-  const headers = event.headers || {};
-  // Netlify converts header names to lower case by default
-  const adminKey = headers['x-admin-key'];
-  if (adminKey && adminKey === SECRET) {
-    return { email: 'admin@docvai.com', name: 'Admin' };
-  }
-  throw { statusCode: 401, message: 'unauthorized' };
+// Minimal error helper
+function httpError(statusCode, message) {
+  const err = new Error(message || 'unauthorized');
+  err.statusCode = statusCode;
+  return err;
 }
 
-module.exports = { requireAuth };
+// Very simple cookie parser
+function parseCookies(header) {
+  const out = {};
+  if (!header) return out;
+  header.split(';').forEach(kv => {
+    const [k, v] = kv.split('=');
+    if (k) out[k.trim()] = (v || '').trim();
+  });
+  return out;
+}
+
+/**
+ * Accepts three modes:
+ * 1) BYPASS via DISABLE_AUTH=1 -> returns dummy user
+ * 2) X-Admin-Key header equals JWT_SECRET -> admin user
+ * 3) Cookie "docvai_auth" of form "email|SECRET" OR just "email"
+ *    - If the suffix SECRET is present, we verify it.
+ *    - If only email is present, we still accept (tolerant during setup).
+ */
+function requireAuth(event) {
+  if (BYPASS) {
+    return { email: 'bypass@docvai.com', name: 'Bypass User
