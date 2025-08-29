@@ -1,17 +1,15 @@
-// api/_lib/auth.js (CJS)
+// api/_lib/auth.js
 function corsHeaders(event) {
   const origin = (event?.headers?.origin || event?.headers?.Origin || '').trim();
-  const allowed = origin || process.env.PUBLIC_SITE_URL || '';
-  const headers = {
+  // If you deploy on a single domain, set PUBLIC_SITE_URL in env and prefer that:
+  const allowed = process.env.PUBLIC_SITE_URL || origin || '';
+  const h = {
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
     'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
   };
-  if (allowed) {
-    headers['Access-Control-Allow-Origin'] = allowed;
-    headers['Vary'] = 'Origin';
-  }
-  return headers;
+  if (allowed) { h['Access-Control-Allow-Origin'] = allowed; h['Vary'] = 'Origin'; }
+  return h;
 }
 
 function parseCookie(str) {
