@@ -2,15 +2,50 @@
 const { requireAuth, corsHeaders } = require('./_lib/auth.js');
 const { query, ensureSchema } = require('./_lib/db.js');
 
-async function tryJson(url, headers) {
-  const r = await fetch(url, { headers });
-  const t = await r.text().catch(()=>'');
-  let j = null; try { j = t ? JSON.parse(t) : null } catch {}
-  return { ok: r.ok, status: r.status, body: j ?? t, url };
-}
+// Normalize fields from a Bolna execution object
+function normalizeExecution(exec) {
+  const td = exec?.telephony_data || {};
+  // Duration sources: telephony_data.duration (string seconds), conversation_duration (int),
+  // or transcriber_duration (float seconds) as last resort.
+  let dur =
+    td.duration != null ? parseInt(td.duration, 10) :
+    exec?.conversation_duration != null ? parseInt(exec.conversation_duration, 10) :
+    exec?.transcriber_duration != null ? Math.round(Number(exec.transcriber_duration)) :
+    null;
 
-function first(...vals){ for (const v of vals) { if (v !== undefined && v !== null && v !== '') return v } }
-function toInt(v){ const n = parseInt(v, 10); return Number.isFinite(n) ? n : null; }
+  const status =
+    exec?.status ||
+    exec?.smart_status ||
+    null;
+
+  const to_number   = td.to_number   || exec?.to_number   || null;
+  const from_number = td.from_number || exec?.from_number || null;
+
+  const recording_url =
+    td.recording_url ||
+    exec?.recording_url ||
+    null;
+
+  const transcript_text =
+    exec?.transcript ||
+    null;
+
+  const provider_call_id =
+    td.provider_call_id ||
+    exec?.provider_call_id ||
+    exec?.id || // occasionally same as execution id
+    null;
+
+  return {
+    provider_call_id,
+    to_number,
+    from_number,
+    status,
+    duration_sec: Number.isFinite(dur) ? dur : null,
+    recording_url,
+    transcript_text
+  };
+}
 
 module.exports.handler = async (event) => {
   const method = event.httpMethod || event.requestContext?.http?.method || 'GET';
@@ -21,109 +56,68 @@ module.exports.handler = async (event) => {
     await ensureSchema();
 
     const qs = event.queryStringParameters || {};
-    const execId = (qs.id || '').trim(); // execution id (NOT provider_call_id)
-    if (!execId) return { statusCode: 400, headers: corsHeaders(event), body: JSON.stringify({ error: 'missing_id' }) };
+    const id = (qs.id || '').trim();
+    if (!id) return { statusCode: 400, headers: corsHeaders(event), body: JSON.stringify({ error: 'missing_id' }) };
 
     const base = process.env.BOLNA_BASE || 'https://api.bolna.ai';
     const key  = process.env.BOLNA_API_KEY;
-    const headers = { Authorization: `Bearer ${key}` };
 
-    // We now assume this is an execution id and fetch it directly
-    const candidates = [
-      `${base}/executions/${execId}`,
-      `${base}/v2/executions/${execId}`,
-      `${base}/call/${execId}`,      // fallback: some tenants use call/{id} with exec id aliased
-    ];
-
-    let resp = null;
-    for (const u of candidates) {
-      const r = await tryJson(u, headers);
-      if (r.ok && r.body && typeof r.body === 'object') { resp = r; break; }
+    const r = await fetch(`${base}/executions/${encodeURIComponent(id)}`, {
+      headers: { Authorization: `Bearer ${key}` }
+    });
+    const rawText = await r.text();
+    let exec;
+    try { exec = rawText ? JSON.parse(rawText) : {}; } catch { exec = { raw: rawText }; }
+    if (!r.ok) {
+      return { statusCode: r.status, headers: corsHeaders(event), body: JSON.stringify({ error: 'provider_error', detail: exec }) };
     }
 
-    if (!resp || !resp.ok || !resp.body || typeof resp.body !== 'object') {
-      return { statusCode: 200, headers: corsHeaders(event), body: JSON.stringify({
-        execId,
-        probe_url: resp?.url,
-        probe_status: resp?.status,
-        found: false
-      })};
-    }
+    const picked = normalizeExecution(exec);
+    // Always use the ID you asked for as the key; fall back to picked.provider_call_id
+    const keyId = id || picked.provider_call_id;
 
-    const b = resp.body;
-    const td = b.telephony_data || {};
+    // Upsert logic: only overwrite when the new value is non-null
+    await query(`
+      INSERT INTO docvai_calls
+        (provider_call_id, to_number, from_number, status, duration_sec, recording_url, transcript_text, payload, created_at)
+      VALUES
+        ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW())
+      ON CONFLICT (provider_call_id) DO UPDATE SET
+        to_number     = COALESCE(EXCLUDED.to_number,     docvai_calls.to_number),
+        from_number   = COALESCE(EXCLUDED.from_number,   docvai_calls.from_number),
+        status        = COALESCE(EXCLUDED.status,        docvai_calls.status),
+        duration_sec  = COALESCE(EXCLUDED.duration_sec,  docvai_calls.duration_sec),
+        recording_url = COALESCE(EXCLUDED.recording_url, docvai_calls.recording_url),
+        transcript_text = COALESCE(EXCLUDED.transcript_text, docvai_calls.transcript_text),
+        payload       = EXCLUDED.payload,
+        updated_at    = NOW()
+    `, [
+      keyId,
+      picked.to_number,
+      picked.from_number,
+      picked.status,
+      picked.duration_sec,
+      picked.recording_url,
+      picked.transcript_text,
+      JSON.stringify(exec)
+    ]);
 
-    // ---- Map fields from your sample ----
-    // IMPORTANT: provider_call_id (from telephony_data) is our DB key
-    const provider_call_id = first(td.provider_call_id, b.provider_call_id) || null;
-
-    const recording_url  = first(td.recording_url, b.recording_url) || null;
-    const duration_sec   = toInt(first(td.duration, b.duration_sec, b.conversation_duration));
-    const status         = first(b.status, b.smart_status, b.state, b.event) || null;
-    const to_number      = first(td.to_number, b.to_number, b.context_details?.recipient_phone_number) || null;
-    const from_number    = first(td.from_number, b.from_number) || null;
-    const transcript_url = first(b.transcript_url, b.data?.transcript_url) || null;
-    const transcript_text= first(b.transcript, b.data?.transcript) || null;
-    const started_at     = first(b.started_at, b.created_at) || null;
-    const ended_at       = first(b.ended_at, b.updated_at) || null;
-
-    // If we *still* don't have a provider_call_id, we can't upsert reliably
-    if (!provider_call_id) {
-      return { statusCode: 200, headers: corsHeaders(event), body: JSON.stringify({
-        execId,
-        probe_url: resp.url,
-        found: true,
-        note: 'provider_call_id missing in payload; cannot upsert',
-        raw: b
-      })};
-    }
-
-    // ---- Upsert by provider_call_id ----
-    await query(
-      `INSERT INTO docvai_calls
-         (provider_call_id, agent_id, to_number, from_number, status, duration_sec,
-          recording_url, transcript_url, transcript_text, started_at, ended_at, payload)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
-       ON CONFLICT (provider_call_id) DO UPDATE SET
-         agent_id       = COALESCE(EXCLUDED.agent_id, docvai_calls.agent_id),
-         to_number      = COALESCE(EXCLUDED.to_number, docvai_calls.to_number),
-         from_number    = COALESCE(EXCLUDED.from_number, docvai_calls.from_number),
-         status         = COALESCE(EXCLUDED.status, docvai_calls.status),
-         duration_sec   = COALESCE(EXCLUDED.duration_sec, docvai_calls.duration_sec),
-         recording_url  = COALESCE(EXCLUDED.recording_url, docvai_calls.recording_url),
-         transcript_url = COALESCE(EXCLUDED.transcript_url, docvai_calls.transcript_url),
-         transcript_text= COALESCE(EXCLUDED.transcript_text, docvai_calls.transcript_text),
-         started_at     = COALESCE(EXCLUDED.started_at, docvai_calls.started_at),
-         ended_at       = COALESCE(EXCLUDED.ended_at, docvai_calls.ended_at),
-         payload        = EXCLUDED.payload`,
-      [
-        provider_call_id,
-        b.agent_id || null,
-        to_number,
-        from_number,
-        status,
-        duration_sec,
-        recording_url,
-        transcript_url,
-        transcript_text,
-        started_at ? new Date(started_at) : null,
-        ended_at ? new Date(ended_at) : null,
-        b
-      ]
-    );
-
-    return { statusCode: 200, headers: corsHeaders(event), body: JSON.stringify({
-      execId,
-      probe_url: resp.url,
-      found: true,
-      upserted_provider_call_id: provider_call_id,
-      extracted: {
-        status, duration_sec, recording_url,
-        transcript_text_present: !!transcript_text,
-        to_number, from_number, started_at, ended_at
-      }
-    })};
+    return {
+      statusCode: 200,
+      headers: corsHeaders(event),
+      body: JSON.stringify({
+        ok: true,
+        id: keyId,
+        extracted: {
+          status: picked.status,
+          duration_sec: picked.duration_sec,
+          recording_url: picked.recording_url
+        },
+        probe_status: r.status,
+        probe_url: `${base}/executions/${id}`
+      })
+    };
   } catch (e) {
-    return { statusCode: e.statusCode || 500, headers: corsHeaders(event), body: JSON.stringify({ error: e.message || 'poll_failed' }) };
+    return { statusCode: 500, headers: corsHeaders(event), body: JSON.stringify({ error: 'poll_failed', detail: e.message }) };
   }
 };
