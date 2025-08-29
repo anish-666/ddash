@@ -1,33 +1,45 @@
-// Netlify function that returns a time series of
-// analytics.  Without persistent storage this
-// synthesises a list of call counts for each day in
-// the requested window.  The front‑end visualises
-// these values in a simple line chart.  If you later
-// wire up a database this function can query real
-// call logs instead.
+const { requireAuth, corsHeaders } = require('./_lib/auth.js');
 
-const { requireAuth } = require('./_lib/auth.js');
+function makeSeries(days) {
+  const today = new Date();
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setDate(today.getDate() - i);
+    const label = d.toISOString().slice(0, 10);
+    const value = Math.floor(20 + Math.random() * 30);
+    out.push({ date: label, calls: value });
+  }
+  return out;
+}
 
 module.exports.handler = async (event) => {
+  const method = event.httpMethod || event.requestContext?.http?.method || 'GET';
+
+  // CORS preflight
+  if (method === 'OPTIONS') {
+    return { statusCode: 200, headers: corsHeaders(event), body: '' };
+  }
+
   try {
     requireAuth(event);
-    const params = event.queryStringParameters || {};
-    const windowStr = params.window || '7d';
-    const daysMatch = /^(\d+)d$/.exec(windowStr);
-    const days = daysMatch ? parseInt(daysMatch[1], 10) : 7;
-    const now = Date.now();
-    const series = [];
-    for (let i = days - 1; i >= 0; i--) {
-      const date = new Date(now - i * 24 * 60 * 60 * 1000);
-      const iso = date.toISOString().split('T')[0];
-      const calls = 5 + Math.floor(Math.random() * 10);
-      const call_minutes = calls * (2 + Math.random() * 3);
-      const interactions = calls * (3 + Math.random() * 2);
-      series.push({ date: iso, calls, call_minutes: Math.round(call_minutes), interactions: Math.round(interactions) });
-    }
-    return { statusCode: 200, body: JSON.stringify({ window: windowStr, series }) };
+
+    const url = new URL(event.rawUrl || `http://x${event.path}?${event.queryStringParameters || ''}`);
+    const window = (url.searchParams.get('window') || '7d').toLowerCase();
+    const n = window.endsWith('d') ? parseInt(window, 10) : 7;
+
+    const series = makeSeries(isNaN(n) ? 7 : n);
+
+    return {
+      statusCode: 200,
+      headers: corsHeaders(event),
+      body: JSON.stringify(series),
+    };
   } catch (e) {
-    const status = e.statusCode || 500;
-    return { statusCode: status, body: JSON.stringify({ error: e.message || 'failed' }) };
+    return {
+      statusCode: e.statusCode || 401,
+      headers: corsHeaders(event),
+      body: JSON.stringify({ error: e.message || 'unauthorized' }),
+    };
   }
 };
