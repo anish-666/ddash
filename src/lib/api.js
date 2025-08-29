@@ -25,8 +25,18 @@ export const api = {
     http('/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
 
   agents: () => http('/agents'),
+
   outbound: (numbers, agentId, fromNumber) =>
-    http('/calls-outbound', { method: 'POST', body: JSON.stringify({ numbers, agentId, fromNumber }) }),
-  analyticsSummary: (window = '7d') => http(`/analytics-summary?window=${encodeURIComponent(window)}`),
-  analyticsTimeseries: (window = '7d') => http(`/analytics-timeseries?window=${encodeURIComponent(window)}`),
-  co
+    http('/calls-outbound', {
+      method: 'POST',
+      body: JSON.stringify({ numbers, agentId, fromNumber })
+    }),
+
+  analyticsSummary: (window = '7d') =>
+    http(`/analytics-summary?window=${encodeURIComponent(window)}`),
+
+  analyticsTimeseries: (window = '7d') =>
+    http(`/analytics-timeseries?window=${encodeURIComponent(window)}`),
+
+  conversations: () => http('/conversations')
+};
