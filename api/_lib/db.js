@@ -24,7 +24,7 @@ async function query(text, params) {
   return p.query(text, params);
 }
 
-// Auto-create / migrate schema (adds transcript_text if missing)
+// Auto-create / migrate schema
 async function ensureSchema() {
   const sql = `
   CREATE TABLE IF NOT EXISTS docvai_calls (
@@ -43,11 +43,23 @@ async function ensureSchema() {
     payload JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
+
   DO $$ BEGIN
     ALTER TABLE docvai_calls ADD COLUMN IF NOT EXISTS transcript_text TEXT;
   EXCEPTION WHEN duplicate_column THEN NULL; END $$;
+
+  -- Unique index for upsert
+  DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_indexes
+      WHERE schemaname = 'public' AND indexname = 'docvai_calls_provider_call_id_unique_idx'
+    ) THEN
+      CREATE UNIQUE INDEX docvai_calls_provider_call_id_unique_idx
+      ON docvai_calls (provider_call_id);
+    END IF;
+  END $$;
+
   CREATE INDEX IF NOT EXISTS idx_docvai_calls_created_at ON docvai_calls(created_at DESC);
-  CREATE INDEX IF NOT EXISTS idx_docvai_calls_provider_call_id ON docvai_calls(provider_call_id);
   `;
   await query(sql);
 }
