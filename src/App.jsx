@@ -1,6 +1,6 @@
 import React from 'react';
 import { Routes, Route, Navigate, Link, Outlet, useLocation } from 'react-router-dom';
-import { AuthProvider, useAuth } from './lib/useAuth.js';
+import { AuthProvider, useAuth } from './lib/useAuth.jsx';
 import Overview from './spa/Overview.jsx';
 import Agents from './spa/Agents.jsx';
 import Outbound from './spa/Outbound.jsx';
