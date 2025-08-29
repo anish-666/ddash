@@ -2,6 +2,7 @@
 
 // Shared auth + CORS helpers
 const { requireAuth, corsHeaders } = require('./_lib/auth.js');
+const { request: http } = require('./_lib/http.js');
 
 module.exports.handler = async (event) => {
   const method =
