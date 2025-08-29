@@ -14,7 +14,7 @@
     "clsx": "^2.1.1",
     "chart.js": "^4.4.0",
     "react-chartjs-2": "^5.2.0",
-    "node-fetch": "^3.3.2"
+    "pg": "^8.11.3"
   },
   "devDependencies": {
     "vite": "^5.3.4",
