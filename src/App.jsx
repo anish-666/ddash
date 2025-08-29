@@ -24,7 +24,10 @@ function Layout() {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand">Docvai</div>
+       <div className="brand">
+  <img src="/logo.png" alt="Docvai" style={{ height: 64 }} />
+</div>
+
         <nav>
           <ul>
             <li><Link to="/">Overview</Link></li>
