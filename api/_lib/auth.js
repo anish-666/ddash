@@ -1,10 +1,18 @@
 // api/_lib/auth.js (CJS)
-const corsHeaders = (_event) => ({
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Credentials': 'true',
-  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
-  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
-});
+function corsHeaders(event) {
+  const origin = (event?.headers?.origin || event?.headers?.Origin || '').trim();
+  const allowed = origin || process.env.PUBLIC_SITE_URL || '';
+  const headers = {
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
+  };
+  if (allowed) {
+    headers['Access-Control-Allow-Origin'] = allowed;
+    headers['Vary'] = 'Origin';
+  }
+  return headers;
+}
 
 function parseCookie(str) {
   const out = {};
@@ -16,17 +24,14 @@ function parseCookie(str) {
 }
 
 function requireAuth(event) {
-  // 1) bypass for setup/debug
   if (process.env.DISABLE_AUTH === '1') {
     return { email: 'bypass@docvai.com', name: 'Bypass User' };
   }
-  // 2) admin header escape hatch
   const hdrs = event.headers || {};
   const adminKey = hdrs['x-admin-key'] || hdrs['X-Admin-Key'];
   if (adminKey && process.env.JWT_SECRET && adminKey === process.env.JWT_SECRET) {
     return { email: 'admin@docvai.com', name: 'Admin Header' };
   }
-  // 3) cookie
   const cookies = parseCookie(hdrs.cookie || hdrs.Cookie || '');
   const sess = cookies['docvai_sess'];
   if (sess) {
