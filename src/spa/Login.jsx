@@ -1,79 +1,51 @@
 import React, { useState } from 'react';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { useAuth } from '../lib/useAuth.jsx';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../lib/useAuth';
 
 export default function Login() {
   const { login } = useAuth();
   const nav = useNavigate();
-  const loc = useLocation();
-  const redirectTo = (loc.state && loc.state.from && loc.state.from.pathname) || '/';
-
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
-  const [loading, setLoading] = useState(false);
 
   async function onSubmit(e) {
     e.preventDefault();
     setErr('');
+    setBusy(true);
     try {
-      setLoading(true);
-      await login(email, password);
-      nav(redirectTo, { replace: true });
+      await login(email.trim(), password);
+      nav('/', { replace: true }); // go to dashboard
     } catch (e) {
       setErr(e.message || 'Login failed');
     } finally {
-      setLoading(false);
+      setBusy(false);
     }
   }
 
   return (
-    <div className="login-wrap">
-      <div className="login-panel card">
-        <div className="login-header">
-  <img
-    src="/logo.png"
-    alt="Docvai logo"
-    style={{ height: 128, margin: '0 auto' }}
-  />
-  <div className="login-title" style={{ marginTop: 0 }}>Dashboard</div>
-  <div className="login-subtitle">Sign in to continue</div>
-
+    <div className="stack" style={{ minHeight: '100vh', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div className="card" style={{ width: 360, padding: 16 }}>
+        <div className="login-header" style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4, marginBottom:12 }}>
+          <img src="/logo.png" alt="Docvai logo" style={{ height: 48 }} />
+          <div className="login-title" style={{ margin:0, fontWeight:700, fontSize:20 }}>Docvai Dashboard</div>
+          <div className="login-subtitle" style={{ margin:0, fontSize:13, opacity:0.75 }}>Sign in to continue</div>
         </div>
 
         <form className="stack" onSubmit={onSubmit}>
           <label className="label">Email</label>
-          <input
-            className="input"
-            type="email"
-            value={email}
-            onChange={e=>setEmail(e.target.value)}
-            placeholder="you@docvai.com"
-            required
-            autoFocus
-          />
+          <input className="input" type="email" value={email} onChange={e=>setEmail(e.target.value)} required />
 
           <label className="label">Password</label>
-          <input
-            className="input"
-            type="password"
-            value={password}
-            onChange={e=>setPassword(e.target.value)}
-            placeholder="••••••••"
-            required
-          />
+          <input className="input" type="password" value={password} onChange={e=>setPassword(e.target.value)} required />
 
           {err && <div className="error">{err}</div>}
 
-          <button className="btn btn-primary" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign in'}
+          <button className="btn btn-primary" type="submit" disabled={busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
-
-        <div className="login-footer muted">
-          <span>Need access?</span>{' '}
-          <Link to="#" onClick={e=>e.preventDefault()}>contact admin</Link>
-        </div>
       </div>
     </div>
   );
