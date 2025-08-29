@@ -10,15 +10,41 @@ function getPool() {
       e.statusCode = 500;
       throw e;
     }
-    pool = new Pool({ connectionString: url, max: 3, ssl: { rejectUnauthorized: false } });
+    pool = new Pool({
+      connectionString: url,
+      max: 3,
+      ssl: { rejectUnauthorized: false }
+    });
   }
   return pool;
 }
 
 async function query(text, params) {
   const p = getPool();
-  const res = await p.query(text, params);
-  return res;
+  return p.query(text, params);
 }
 
-module.exports = { query };
+async function ensureSchema() {
+  const sql = `
+  CREATE TABLE IF NOT EXISTS docvai_calls (
+    id BIGSERIAL PRIMARY KEY,
+    provider_call_id TEXT,
+    agent_id TEXT,
+    to_number TEXT,
+    from_number TEXT,
+    status TEXT,
+    duration_sec INTEGER,
+    recording_url TEXT,
+    transcript_url TEXT,
+    started_at TIMESTAMPTZ,
+    ended_at TIMESTAMPTZ,
+    payload JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS idx_docvai_calls_created_at ON docvai_calls(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_docvai_calls_provider_call_id ON docvai_calls(provider_call_id);
+  `;
+  await query(sql);
+}
+
+module.exports = { query, ensureSchema };
