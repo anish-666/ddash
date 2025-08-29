@@ -6,7 +6,7 @@ function normalizeExecution(exec) {
   const td = exec?.telephony_data || {};
   let dur =
     td.duration != null ? parseInt(td.duration, 10) :
-    exec?.conversation_duration != null ? parseInt(exec.conversation_duration, 10) :
+    exec?.conversation_duration != null ? Math.round(Number(exec.conversation_duration)) :
     exec?.transcriber_duration != null ? Math.round(Number(exec.transcriber_duration)) :
     null;
 
@@ -28,11 +28,13 @@ function normalizeExecution(exec) {
   };
 }
 
-async function fetchExecution(base, key, id) {
-  const r = await fetch(`${base}/executions/${encodeURIComponent(id)}`);
+async function fetchExec(base, key, id) {
+  const r = await fetch(`${base}/executions/${encodeURIComponent(id)}`, {
+    headers: { Authorization: `Bearer ${key}` }
+  });
   const text = await r.text();
   let json; try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
-  return { ok: r.ok, status: r.status, data: json, raw: text };
+  return { ok: r.ok, status: r.status, data: json };
 }
 
 module.exports.handler = async (event) => {
@@ -50,21 +52,13 @@ module.exports.handler = async (event) => {
     const base = (process.env.BOLNA_BASE || 'https://api.bolna.ai').replace(/\/+$/,'');
     const key  = process.env.BOLNA_API_KEY;
 
-    // Set auth header globally via fetch init
-    const orig = await fetchExecution(`${base}`, key, id);
-    let execResp = orig;
-    let usedId = id;
-    let attempted = [{ id, status: orig.status }];
+    // 1st attempt
+    let attempt = await fetchExec(base, key, id);
+    const attempted = [{ id, status: attempt.status }];
 
-    // If not found, try to discover a real execution id from our DB payload
-    if (!orig.ok && orig.status === 404) {
-      const { rows } = await query(`
-        SELECT payload
-        FROM docvai_calls
-        WHERE provider_call_id = $1
-        LIMIT 1
-      `, [id]);
-
+    // If 404, try to discover a real execution id from our payload and retry once
+    if (!attempt.ok && attempt.status === 404) {
+      const { rows } = await query(`SELECT payload FROM docvai_calls WHERE provider_call_id = $1 LIMIT 1`, [id]);
       if (rows.length) {
         const p = rows[0].payload || {};
         const alt =
@@ -73,26 +67,21 @@ module.exports.handler = async (event) => {
           p?.telephony_data?.provider_call_id ||
           null;
         if (alt && alt !== id) {
-          const retry = await fetch(`${base}/executions/${encodeURIComponent(alt)}`, {
-            headers: { Authorization: `Bearer ${key}` }
-          });
-          const t2 = await retry.text(); let j2; try { j2 = t2 ? JSON.parse(t2) : {}; } catch { j2 = { raw: t2 }; }
-          execResp = { ok: retry.ok, status: retry.status, data: j2, raw: t2 };
-          usedId = alt;
-          attempted.push({ id: alt, status: retry.status });
+          attempt = await fetchExec(base, key, alt);
+          attempted.push({ id: alt, status: attempt.status });
         }
       }
     }
 
-    if (!execResp.ok) {
+    if (!attempt.ok) {
       return {
-        statusCode: execResp.status || 502,
+        statusCode: attempt.status || 502,
         headers: corsHeaders(event),
-        body: JSON.stringify({ error: 'provider_error', detail: execResp.data, attempted })
+        body: JSON.stringify({ error: 'provider_error', detail: attempt.data, attempted })
       };
     }
 
-    const picked = normalizeExecution(execResp.data);
+    const picked = normalizeExecution(attempt.data);
 
     await query(`
       INSERT INTO docvai_calls
@@ -108,14 +97,14 @@ module.exports.handler = async (event) => {
         transcript_text = COALESCE(EXCLUDED.transcript_text, docvai_calls.transcript_text),
         payload         = EXCLUDED.payload
     `, [
-      usedId,
+      id, // keep the original id as the row key you refreshed
       picked.to_number,
       picked.from_number,
       picked.status,
       picked.duration_sec,
       picked.recording_url,
       picked.transcript_text,
-      JSON.stringify(execResp.data)
+      JSON.stringify(attempt.data)
     ]);
 
     return {
@@ -123,7 +112,7 @@ module.exports.handler = async (event) => {
       headers: corsHeaders(event),
       body: JSON.stringify({
         ok: true,
-        id: usedId,
+        id,
         extracted: {
           status: picked.status,
           duration_sec: picked.duration_sec,
