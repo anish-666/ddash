@@ -31,13 +31,14 @@ export default function Login() {
     <div className="login-wrap">
       <div className="login-panel card">
         <div className="login-header">
-          <img
+  <img
     src="/logo.png"
     alt="Docvai logo"
     style={{ height: 48, margin: '0 auto' }}
   />
-          <div className="login-title">Dashboard</div>
-          <div className="login-subtitle">Sign in to continue</div>
+  <div className="login-title" style={{ marginTop: 8 }}>Docvai Dashboard</div>
+  <div className="login-subtitle">Sign in to continue</div>
+
         </div>
 
         <form className="stack" onSubmit={onSubmit}>
