@@ -7,6 +7,8 @@
  */
 
 const BASE = import.meta.env.VITE_API_BASE || '/.netlify/functions';
+conversations: () => http('/conversations'),
+
 
 async function http(path, init = {}) {
   const res = await fetch(`${BASE}${path}`, {
