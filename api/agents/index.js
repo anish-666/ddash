@@ -1,5 +1,6 @@
 // api/agents/index.js (CJS)
 const { requireAuth, corsHeaders } = require('../_lib/auth.js');
+const { request: http } = require('../_lib/http.js');
 
 module.exports.handler = async (event) => {
   const method = event.httpMethod || (event.requestContext && event.requestContext.http && event.requestContext.http.method) || 'GET';
