@@ -7,17 +7,25 @@ import { Line, Bar } from 'react-chartjs-2';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend);
 
-function Kpi({ label, value, sub }) {
+const COLORS = {
+  total: '#3b82f6',      // blue
+  completed: '#10b981',  // green
+  inbound: '#6366f1',    // indigo
+  outbound: '#f59e0b',   // amber
+  avg: '#ef4444',        // red
+  transcripts: '#8b5cf6' // violet
+};
+
+function Kpi({ label, value, color }) {
   return (
-    <div className="card" style={{ padding: 16 }}>
-      <div className="muted" style={{ fontSize: 12 }}>{label}</div>
-      <div style={{ fontSize: 24, fontWeight: 700 }}>{value}</div>
-      {sub ? <div className="muted" style={{ fontSize: 12 }}>{sub}</div> : null}
+    <div className="card" style={{ padding: 12, borderLeft: `5px solid ${color}` }}>
+      <div className="muted" style={{ fontSize: 12, lineHeight: 1 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.2 }}>{value}</div>
     </div>
   );
 }
 
-function ChartCard({ title, children, height=280 }) {
+function ChartCard({ title, children, height = 260 }) {
   return (
     <div className="card" style={{ padding: 12 }}>
       <div className="card-title">{title}</div>
@@ -50,7 +58,7 @@ export default function Overview() {
   useEffect(() => { load(); }, []);
 
   const k = sum?.totals || {
-    total: 0, inbound: 0, outbound: 0, completed: 0, avgDurationSec: 0, recordings: 0, transcripts: 0
+    total: 0, inbound: 0, outbound: 0, completed: 0, avgDurationSec: 0, transcripts: 0
   };
 
   const labels = ts?.labels || [];
@@ -65,26 +73,32 @@ export default function Overview() {
       <h1>Overview</h1>
       {err && <div className="error">{err}</div>}
 
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(6, minmax(0,1fr))', gap: 12 }}>
-        <Kpi label="Total calls" value={k.total} />
-        <Kpi label="Inbound" value={k.inbound} />
-        <Kpi label="Outbound" value={k.outbound} />
-        <Kpi label="Completed" value={k.completed} />
-        <Kpi label="Avg duration" value={`${k.avgDurationSec || 0}s`} />
-        <Kpi label="Transcripts" value={k.transcripts} sub={`${k.transcripts}/${k.total || 0}`} />
+      {/* Compact KPI grid: auto-fit 150px min-width tiles */}
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+        <Kpi label="Total calls" value={k.total} color={COLORS.total} />
+        <Kpi label="Inbound" value={k.inbound} color={COLORS.inbound} />
+        <Kpi label="Outbound" value={k.outbound} color={COLORS.outbound} />
+        <Kpi label="Completed" value={k.completed} color={COLORS.completed} />
+        <Kpi label="Avg duration" value={`${k.avgDurationSec || 0}s`} color={COLORS.avg} />
+        <Kpi label="Transcripts" value={k.transcripts} color={COLORS.transcripts} />
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+      <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', gap: 12, marginTop: 12 }}>
         <ChartCard title="Calls per day">
           <Line
             data={{
               labels,
               datasets: [
-                { label: 'Total', data: dTotal, borderWidth: 2, tension: 0.3 },
-                { label: 'Completed', data: dCompleted, borderWidth: 2, tension: 0.3 }
+                { label: 'Total', data: dTotal, borderColor: COLORS.total, backgroundColor: COLORS.total, tension: 0.3 },
+                { label: 'Completed', data: dCompleted, borderColor: COLORS.completed, backgroundColor: COLORS.completed, tension: 0.3 }
               ]
             }}
-            options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }}
+            options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { position: 'bottom' } },
+              interaction: { intersect: false, mode: 'nearest' }
+            }}
           />
         </ChartCard>
 
@@ -93,8 +107,8 @@ export default function Overview() {
             data={{
               labels,
               datasets: [
-                { label: 'Inbound', data: dInbound, stack: 'calls' },
-                { label: 'Outbound', data: dOutbound, stack: 'calls' }
+                { label: 'Inbound', data: dInbound, backgroundColor: COLORS.inbound, stack: 'calls' },
+                { label: 'Outbound', data: dOutbound, backgroundColor: COLORS.outbound, stack: 'calls' }
               ]
             }}
             options={{
@@ -107,11 +121,21 @@ export default function Overview() {
         </ChartCard>
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 12 }}>
         <ChartCard title="Average duration (s)" height={220}>
           <Line
-            data={{ labels, datasets: [{ label: 'Avg duration (s)', data: dAvg, borderWidth: 2, tension: 0.3 }] }}
-            options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }}
+            data={{
+              labels,
+              datasets: [
+                { label: 'Avg duration (s)', data: dAvg, borderColor: COLORS.avg, backgroundColor: COLORS.avg, tension: 0.3 }
+              ]
+            }}
+            options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { position: 'bottom' } },
+              interaction: { intersect: false, mode: 'nearest' }
+            }}
           />
         </ChartCard>
 
@@ -120,11 +144,15 @@ export default function Overview() {
             data={{
               labels: ['Last 7 days'],
               datasets: [
-                { label: 'With transcript', data: [k.transcripts] },
-                { label: 'Without transcript', data: [Math.max(0, (k.total||0) - (k.transcripts||0))] }
+                { label: 'With transcript', data: [k.transcripts], backgroundColor: COLORS.transcripts },
+                { label: 'Without transcript', data: [Math.max(0, (k.total || 0) - (k.transcripts || 0))], backgroundColor: '#94a3b8' }
               ]
             }}
-            options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }}
+            options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { position: 'bottom' } }
+            }}
           />
         </ChartCard>
       </div>
