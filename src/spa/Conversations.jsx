@@ -18,8 +18,13 @@ export default function Conversations() {
     if (!r.provider_call_id) return;
     setBusy(r.provider_call_id);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_BASE || '/.netlify/functions'}/provider-poll?id=${encodeURIComponent(r.provider_call_id)}`, { credentials: 'include' });
-      await res.text(); // ignore body; we reload below
+      const base = import.meta.env.VITE_API_BASE || '/.netlify/functions';
+      const res = await fetch(`${base}/provider-poll?id=${encodeURIComponent(r.provider_call_id)}`, { credentials: 'include' });
+      const json = await res.json().catch(()=>null);
+      // 🔎 Log everything we got back from the provider (for mapping)
+      console.groupCollapsed('Provider poll', r.provider_call_id);
+      console.log(json);
+      console.groupEnd();
       await load();
     } finally {
       setBusy(null);
@@ -55,7 +60,7 @@ export default function Conversations() {
                 <td>{r.recording_url ? <audio controls src={r.recording_url} style={{ maxWidth: 220 }} /> : '—'}</td>
                 <td>{r.transcript_url ? <a href={r.transcript_url} target="_blank" rel="noreferrer">Open</a> : '—'}</td>
                 <td>
-                  {(!r.recording_url && r.provider_call_id) &&
+                  {r.provider_call_id &&
                     <button className="btn btn-secondary" onClick={()=>refreshRow(r)} disabled={busy === r.provider_call_id}>
                       {busy === r.provider_call_id ? 'Refreshing…' : 'Refresh'}
                     </button>}
