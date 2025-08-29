@@ -34,7 +34,7 @@ export default function Login() {
   <img
     src="/logo.png"
     alt="Docvai logo"
-    style={{ height: 48, margin: '0 auto' }}
+    style={{ height: 64, margin: '0 auto' }}
   />
   <div className="login-title" style={{ marginTop: 8 }}>Docvai Dashboard</div>
   <div className="login-subtitle">Sign in to continue</div>
