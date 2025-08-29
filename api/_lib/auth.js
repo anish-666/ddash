@@ -1,71 +1,43 @@
 // api/_lib/auth.js (CJS)
-const COOKIE_NAME = 'docvai_auth';
-const SECRET = process.env.JWT_SECRET || 'supersecret';
-const BYPASS = process.env.DISABLE_AUTH === '1';
-
-
-function httpError(statusCode, message) {
-const err = new Error(message || 'unauthorized');
-err.statusCode = statusCode;
-return err;
-}
-
-
-function parseCookies(header) {
-const out = {};
-if (!header) return out;
-header.split(';').forEach((kv) => {
-const idx = kv.indexOf('=');
-const k = idx >= 0 ? kv.slice(0, idx) : kv;
-const v = idx >= 0 ? kv.slice(idx + 1) : '';
-if (k) out[k.trim()] = (v || '').trim();
+const corsHeaders = (_event) => ({
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Credentials': 'true',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Admin-Key',
+  'Access-Control-Allow-Methods': 'GET,POST,OPTIONS'
 });
-return out;
-}
 
+function parseCookie(str) {
+  const out = {};
+  (str || '').split(/;\s*/).forEach(p => {
+    const i = p.indexOf('=');
+    if (i > -1) out[p.slice(0, i)] = decodeURIComponent(p.slice(i + 1));
+  });
+  return out;
+}
 
 function requireAuth(event) {
-if (BYPASS) {
-return { email: 'bypass@docvai.com', name: 'Bypass User' };
+  // 1) bypass for setup/debug
+  if (process.env.DISABLE_AUTH === '1') {
+    return { email: 'bypass@docvai.com', name: 'Bypass User' };
+  }
+  // 2) admin header escape hatch
+  const hdrs = event.headers || {};
+  const adminKey = hdrs['x-admin-key'] || hdrs['X-Admin-Key'];
+  if (adminKey && process.env.JWT_SECRET && adminKey === process.env.JWT_SECRET) {
+    return { email: 'admin@docvai.com', name: 'Admin Header' };
+  }
+  // 3) cookie
+  const cookies = parseCookie(hdrs.cookie || hdrs.Cookie || '');
+  const sess = cookies['docvai_sess'];
+  if (sess) {
+    try {
+      const obj = JSON.parse(Buffer.from(sess, 'base64').toString('utf8'));
+      if (obj && obj.email) return obj;
+    } catch {}
+  }
+  const err = new Error('unauthorized');
+  err.statusCode = 401;
+  throw err;
 }
-
-
-const headers = event.headers || {};
-const adminKey = headers['x-admin-key'] || headers['X-Admin-Key'] || headers['x-Admin-key'];
-if (adminKey && adminKey === SECRET) {
-return { email: 'admin@docvai.com', name: 'Admin (Header)' };
-}
-
-
-const cookieHeader = headers.cookie || headers.Cookie || '';
-const cookies = parseCookies(cookieHeader);
-const raw = cookies[COOKIE_NAME];
-if (!raw) throw httpError(401, 'missing_cookie');
-
-
-const parts = decodeURIComponent(raw).split('|');
-const email = (parts[0] || '').trim().toLowerCase();
-const sig = parts[1];
-if (!email) throw httpError(401, 'invalid_cookie');
-if (sig && sig !== SECRET) throw httpError(401, 'bad_signature');
-
-
-return { email, name: 'Docvai User' };
-}
-
-
-function corsHeaders(event) {
-const headers = event && event.headers ? event.headers : {};
-const origin = headers.origin || headers.Origin || '*';
-const siteOrigin = process.env.PUBLIC_SITE_URL || origin;
-return {
-'Access-Control-Allow-Origin': siteOrigin,
-'Access-Control-Allow-Credentials': 'true',
-'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Admin-Key',
-'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
-'Content-Type': 'application/json'
-};
-}
-
 
 module.exports = { requireAuth, corsHeaders };
