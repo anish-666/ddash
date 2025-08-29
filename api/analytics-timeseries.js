@@ -23,13 +23,7 @@ module.exports.handler = async (event) => {
 
     const sql = `
     WITH base_raw AS (
-      SELECT
-        created_at,
-        status,
-        duration_sec,
-        to_number,
-        from_number,
-        payload
+      SELECT created_at, status, duration_sec, to_number, from_number, payload
       FROM docvai_calls
       WHERE created_at >= $2::timestamptz
     ),
@@ -61,17 +55,18 @@ module.exports.handler = async (event) => {
 
     const { rows } = await query(sql, [OUTBOUND, fromTs]);
 
-    const labels = rows.map(r => r.day);
-    const total = rows.map(r => Number(r.total||0));
-    const inbound = rows.map(r => Number(r.inbound||0));
-    const outbound = rows.map(r => Number(r.outbound||0));
-    const completed = rows.map(r => Number(r.completed||0));
-    const avgDuration = rows.map(r => Number(r.avg_duration_sec||0));
-
     return {
       statusCode: 200,
       headers: corsHeaders(event),
-      body: JSON.stringify({ windowDays, labels, total, inbound, outbound, completed, avgDuration })
+      body: JSON.stringify({
+        windowDays,
+        labels: rows.map(r => r.day),
+        total: rows.map(r => Number(r.total||0)),
+        inbound: rows.map(r => Number(r.inbound||0)),
+        outbound: rows.map(r => Number(r.outbound||0)),
+        completed: rows.map(r => Number(r.completed||0)),
+        avgDuration: rows.map(r => Number(r.avg_duration_sec||0))
+      })
     };
   } catch (e) {
     return {
