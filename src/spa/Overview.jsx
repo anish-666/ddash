@@ -1,107 +1,130 @@
 import React, { useEffect, useState } from 'react';
-import { api } from '../lib/api.js';
-import { Line } from 'react-chartjs-2';
-import { Chart, registerables } from 'chart.js';
+import { api } from '../lib/api';
+import {
+  Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend
+} from 'chart.js';
+import { Line, Bar } from 'react-chartjs-2';
 
-// Register all chart.js components globally so that
-// react-chartjs-2 can render charts without warnings.
-Chart.register(...registerables);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Tooltip, Legend);
 
-/**
- * Overview dashboard.  Displays key summary metrics
- * aggregated over a configurable time window and a
- * simple line chart of calls per day.  In the absence
- * of a backing database the server generates random
- * sample data.  The window selector triggers a
- * refetch when changed.
- */
+function Kpi({ label, value, sub }) {
+  return (
+    <div className="card" style={{ padding: 16 }}>
+      <div className="muted" style={{ fontSize: 12 }}>{label}</div>
+      <div style={{ fontSize: 24, fontWeight: 700 }}>{value}</div>
+      {sub ? <div className="muted" style={{ fontSize: 12 }}>{sub}</div> : null}
+    </div>
+  );
+}
+
 export default function Overview() {
-  const [summary, setSummary] = useState(null);
-  const [timeseries, setTimeseries] = useState(null);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [windowSize, setWindowSize] = useState('7d');
+  const [sum, setSum] = useState(null);
+  const [ts, setTs] = useState(null);
+  const [err, setErr] = useState('');
 
-  useEffect(() => {
-    let alive = true;
-    setLoading(true);
-    Promise.all([
-      api.analyticsSummary(windowSize),
-      api.analyticsTimeseries(windowSize)
-    ])
-      .then(([s, t]) => {
-        if (!alive) return;
-        setSummary(s || {});
-        setTimeseries(t || {});
-      })
-      .catch(err => {
-        if (!alive) return;
-        setError(err.message || 'Failed to fetch analytics');
-      })
-      .finally(() => {
-        if (!alive) return;
-        setLoading(false);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [windowSize]);
+  async function load() {
+    setErr('');
+    try {
+      const [s, t] = await Promise.all([
+        api.analyticsSummary('7d'),
+        api.analyticsTimeseries('7d')
+      ]);
+      setSum(s);
+      setTs(t);
+    } catch (e) {
+      setErr(e.message || 'Failed to load analytics');
+    }
+  }
 
-  const chartData = timeseries && Array.isArray(timeseries.series)
-    ? {
-        labels: timeseries.series.map(item => item.date),
-        datasets: [
-          {
-            label: 'Number of Calls',
-            data: timeseries.series.map(item => item.calls || 0),
-            borderColor: '#2b6cb0',
-            backgroundColor: 'rgba(43,108,176,0.1)',
-            tension: 0.2,
-            fill: true
-          }
-        ]
-      }
-    : { labels: [], datasets: [] };
+  useEffect(() => { load(); }, []);
+
+  const k = sum?.totals || {
+    total: 0, inbound: 0, outbound: 0, completed: 0, avgDurationSec: 0, recordings: 0, transcripts: 0
+  };
+
+  const labels = ts?.labels || [];
+  const dTotal = ts?.total || [];
+  const dInbound = ts?.inbound || [];
+  const dOutbound = ts?.outbound || [];
+  const dCompleted = ts?.completed || [];
+  const dAvg = ts?.avgDuration || [];
 
   return (
     <div className="stack-lg">
       <h1>Overview</h1>
-      <div className="stack" style={{ maxWidth: '200px' }}>
-        <label className="label">Window</label>
-        <select className="input" value={windowSize} onChange={e => setWindowSize(e.target.value)}>
-          <option value="7d">Last 7 days</option>
-          <option value="14d">Last 14 days</option>
-          <option value="30d">Last 30 days</option>
-        </select>
+      {err && <div className="error">{err}</div>}
+
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(6, minmax(0,1fr))', gap: 12 }}>
+        <Kpi label="Total calls" value={k.total} />
+        <Kpi label="Inbound" value={k.inbound} />
+        <Kpi label="Outbound" value={k.outbound} />
+        <Kpi label="Completed" value={k.completed} />
+        <Kpi label="Avg duration" value={`${k.avgDurationSec || 0}s`} />
+        <Kpi label="Recordings" value={k.recordings} sub={`${k.recordings}/${k.total || 0}`} />
       </div>
-      {loading && <div>Loading…</div>}
-      {error && <div className="error">{error}</div>}
-      {!loading && summary && (
-        <div className="grid2">
-          <div className="card">
-            <div className="card-title">Total Call Minutes</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{summary.total_call_minutes ?? '-'}</div>
-          </div>
-          <div className="card">
-            <div className="card-title">Number of Calls</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{summary.number_of_calls ?? '-'}</div>
-          </div>
-          <div className="card">
-            <div className="card-title">Average Interaction Count</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{summary.average_interaction_count ?? '-'}</div>
-          </div>
-          <div className="card">
-            <div className="card-title">Interactions</div>
-            <div style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>{summary.total_interactions ?? '-'}</div>
-          </div>
+
+      <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+        <div className="card" style={{ padding: 12 }}>
+          <div className="card-title">Calls per day</div>
+          <Line
+            data={{
+              labels,
+              datasets: [
+                { label: 'Total', data: dTotal },
+                { label: 'Completed', data: dCompleted }
+              ]
+            }}
+            options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }}
+            height={280}
+          />
         </div>
-      )}
-      {timeseries && timeseries.series && (
-        <div className="card">
-          <div className="card-title">Calls Over Time</div>
-          <Line data={chartData} />
+
+        <div className="card" style={{ padding: 12 }}>
+          <div className="card-title">Inbound vs Outbound</div>
+          <Bar
+            data={{
+              labels,
+              datasets: [
+                { label: 'Inbound', data: dInbound, stack: 'calls' },
+                { label: 'Outbound', data: dOutbound, stack: 'calls' }
+              ]
+            }}
+            options={{
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: { legend: { position: 'bottom' } },
+              scales: { x: { stacked: true }, y: { stacked: true } }
+            }}
+            height={280}
+          />
         </div>
-      )}
+      </div>
+
+      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <div className="card" style={{ padding: 12 }}>
+          <div className="card-title">Average duration (s)</div>
+          <Line
+            data={{ labels, datasets: [{ label: 'Avg duration (s)', data: dAvg }] }}
+            options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }}
+            height={220}
+          />
+        </div>
+
+        <div className="card" style={{ padding: 12 }}>
+          <div className="card-title">Transcripts captured</div>
+          <Bar
+            data={{
+              labels: ['Last 7 days'],
+              datasets: [
+                { label: 'With transcript', data: [k.transcripts] },
+                { label: 'Without transcript', data: [Math.max(0, (k.total||0) - (k.transcripts||0))] }
+              ]
+            }}
+            options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }}
+            height={220}
+          />
+        </div>
+      </div>
     </div>
   );
 }
