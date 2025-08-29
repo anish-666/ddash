@@ -17,6 +17,17 @@ function Kpi({ label, value, sub }) {
   );
 }
 
+function ChartCard({ title, children, height=280 }) {
+  return (
+    <div className="card" style={{ padding: 12 }}>
+      <div className="card-title">{title}</div>
+      <div style={{ height, position: 'relative' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export default function Overview() {
   const [sum, setSum] = useState(null);
   const [ts, setTs] = useState(null);
@@ -60,27 +71,24 @@ export default function Overview() {
         <Kpi label="Outbound" value={k.outbound} />
         <Kpi label="Completed" value={k.completed} />
         <Kpi label="Avg duration" value={`${k.avgDurationSec || 0}s`} />
-        <Kpi label="Recordings" value={k.recordings} sub={`${k.recordings}/${k.total || 0}`} />
+        <Kpi label="Transcripts" value={k.transcripts} sub={`${k.transcripts}/${k.total || 0}`} />
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', gap: 12 }}>
-        <div className="card" style={{ padding: 12 }}>
-          <div className="card-title">Calls per day</div>
+        <ChartCard title="Calls per day">
           <Line
             data={{
               labels,
               datasets: [
-                { label: 'Total', data: dTotal },
-                { label: 'Completed', data: dCompleted }
+                { label: 'Total', data: dTotal, borderWidth: 2, tension: 0.3 },
+                { label: 'Completed', data: dCompleted, borderWidth: 2, tension: 0.3 }
               ]
             }}
             options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }}
-            height={280}
           />
-        </div>
+        </ChartCard>
 
-        <div className="card" style={{ padding: 12 }}>
-          <div className="card-title">Inbound vs Outbound</div>
+        <ChartCard title="Inbound vs Outbound">
           <Bar
             data={{
               labels,
@@ -95,23 +103,19 @@ export default function Overview() {
               plugins: { legend: { position: 'bottom' } },
               scales: { x: { stacked: true }, y: { stacked: true } }
             }}
-            height={280}
           />
-        </div>
+        </ChartCard>
       </div>
 
       <div className="grid" style={{ gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <div className="card" style={{ padding: 12 }}>
-          <div className="card-title">Average duration (s)</div>
+        <ChartCard title="Average duration (s)" height={220}>
           <Line
-            data={{ labels, datasets: [{ label: 'Avg duration (s)', data: dAvg }] }}
+            data={{ labels, datasets: [{ label: 'Avg duration (s)', data: dAvg, borderWidth: 2, tension: 0.3 }] }}
             options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }}
-            height={220}
           />
-        </div>
+        </ChartCard>
 
-        <div className="card" style={{ padding: 12 }}>
-          <div className="card-title">Transcripts captured</div>
+        <ChartCard title="Transcripts captured" height={220}>
           <Bar
             data={{
               labels: ['Last 7 days'],
@@ -121,9 +125,8 @@ export default function Overview() {
               ]
             }}
             options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }}
-            height={220}
           />
-        </div>
+        </ChartCard>
       </div>
     </div>
   );
