@@ -1,43 +1,93 @@
-// Netlify function for user login.  Accepts an email
-// and password and sets a cookie on success.  When
-// DISABLE_AUTH=1 any credentials are accepted.  For
-// demonstration purposes demo users may be provided via
-// the DEMO_USERS environment variable as a JSON array
-// of objects with email and password fields.
+// api/login.js (CJS)
+const COOKIE_NAME = 'docvai_auth';
+const SECRET = process.env.JWT_SECRET || 'supersecret';
+const DISABLE = process.env.DISABLE_AUTH === '1';
+
+// Simple CORS headers so you can hit the function from the SPA
+function corsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': process.env.PUBLIC_SITE_URL || '*',
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
+    'Content-Type': 'application/json'
+  };
+}
+
+function json(statusCode, body, extra = {}) {
+  return {
+    statusCode,
+    headers: { ...corsHeaders(), ...extra },
+    body: JSON.stringify(body ?? null),
+  };
+}
+
+function setCookieHeader(value, maxAgeSeconds = 60 * 60 * 24 * 7) {
+  // super simple cookie; replace with a signed JWT in production
+  const sameSite = 'Lax';
+  const secure = 'Secure'; // Netlify over HTTPS
+  return `Set-Cookie, ${COOKIE_NAME}=${encodeURIComponent(value)}; Path=/; Max-Age=${maxAgeSeconds}; HttpOnly; ${secure}; SameSite=${sameSite}`;
+}
 
 module.exports.handler = async (event) => {
-  if ((event.httpMethod || event.requestContext?.http?.method) !== 'POST') {
-    return { statusCode: 405, body: JSON.stringify({ error: 'method_not_allowed' }) };
+  const method = event.httpMethod || event.requestContext?.http?.method || 'GET';
+
+  // 1) OPTIONS preflight
+  if (method === 'OPTIONS') {
+    return {
+      statusCode: 200,
+      headers: corsHeaders(),
+      body: '',
+    };
   }
+
+  // 2) GET health/diagnostic (avoid console 500s if someone GETs this URL)
+  if (method === 'GET') {
+    return json(200, { ok: true, message: 'login endpoint ready', method });
+  }
+
+  // 3) Only POST performs a login
+  if (method !== 'POST') {
+    return json(405, { error: 'method_not_allowed' });
+  }
+
   try {
-    const body = JSON.parse(event.body || '{}');
-    const email = body.email || '';
-    const password = body.password || '';
-    // If auth is disabled we just return the email
-    if (process.env.DISABLE_AUTH === '1') {
+    const { email, password } = JSON.parse(event.body || '{}');
+
+    if (DISABLE) {
+      // Auth bypass for setup
+      const user = { email: email || 'bypass@docvai.com', name: 'Bypass User' };
       return {
         statusCode: 200,
         headers: {
-          // Set a dummy cookie so the browser includes credentials on subsequent requests
-          'Set-Cookie': `user=${encodeURIComponent(email)}; Path=/; HttpOnly`,
+          ...corsHeaders(),
+          // set a very basic cookie just so the SPA can feel logged-in
+          'Set-Cookie': setCookieHeader(`${user.email}|${SECRET}`)
         },
-        body: JSON.stringify({ email })
+        body: JSON.stringify(user),
       };
     }
-    // Try to authenticate against the DEMO_USERS list if provided
-    const demo = process.env.DEMO_USERS ? JSON.parse(process.env.DEMO_USERS) : [];
-    const user = demo.find(u => u.email === email && u.password === password);
-    if (!user) {
-      return { statusCode: 401, body: JSON.stringify({ error: 'invalid_credentials' }) };
+
+    // Optional: support DEMO_USERS JSON array
+    const raw = process.env.DEMO_USERS || '[]';
+    let demos = [];
+    try { demos = JSON.parse(raw); } catch {}
+
+    const found = Array.isArray(demos) && demos.find(u => u.email === email && u.password === password);
+    if (!found) {
+      return json(401, { error: 'invalid_credentials' });
     }
+
+    const user = { email: found.email, name: found.name || 'Demo User' };
     return {
       statusCode: 200,
       headers: {
-        'Set-Cookie': `user=${encodeURIComponent(email)}; Path=/; HttpOnly`,
+        ...corsHeaders(),
+        'Set-Cookie': setCookieHeader(`${user.email}|${SECRET}`)
       },
-      body: JSON.stringify({ email })
+      body: JSON.stringify(user),
     };
-  } catch (err) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'failed' }) };
+  } catch (e) {
+    return json(500, { error: e.message || 'login_failed' });
   }
 };
