@@ -2,39 +2,20 @@
 const { requireAuth, corsHeaders } = require('./_lib/auth.js');
 const { query, ensureSchema } = require('./_lib/db.js');
 
-// Normalize fields from a Bolna execution object
 function normalizeExecution(exec) {
   const td = exec?.telephony_data || {};
-  // Duration sources: telephony_data.duration (string seconds), conversation_duration (int),
-  // or transcriber_duration (float seconds) as last resort.
   let dur =
     td.duration != null ? parseInt(td.duration, 10) :
     exec?.conversation_duration != null ? parseInt(exec.conversation_duration, 10) :
     exec?.transcriber_duration != null ? Math.round(Number(exec.transcriber_duration)) :
     null;
 
-  const status =
-    exec?.status ||
-    exec?.smart_status ||
-    null;
-
+  const status = exec?.status || exec?.smart_status || null;
   const to_number   = td.to_number   || exec?.to_number   || null;
   const from_number = td.from_number || exec?.from_number || null;
-
-  const recording_url =
-    td.recording_url ||
-    exec?.recording_url ||
-    null;
-
-  const transcript_text =
-    exec?.transcript ||
-    null;
-
-  const provider_call_id =
-    td.provider_call_id ||
-    exec?.provider_call_id ||
-    exec?.id || // occasionally same as execution id
-    null;
+  const recording_url  = td.recording_url || exec?.recording_url || null;
+  const transcript_text = exec?.transcript || null;
+  const provider_call_id = td.provider_call_id || exec?.provider_call_id || exec?.id || null;
 
   return {
     provider_call_id,
@@ -45,6 +26,13 @@ function normalizeExecution(exec) {
     recording_url,
     transcript_text
   };
+}
+
+async function fetchExecution(base, key, id) {
+  const r = await fetch(`${base}/executions/${encodeURIComponent(id)}`);
+  const text = await r.text();
+  let json; try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
+  return { ok: r.ok, status: r.status, data: json, raw: text };
 }
 
 module.exports.handler = async (event) => {
@@ -59,47 +47,75 @@ module.exports.handler = async (event) => {
     const id = (qs.id || '').trim();
     if (!id) return { statusCode: 400, headers: corsHeaders(event), body: JSON.stringify({ error: 'missing_id' }) };
 
-    const base = process.env.BOLNA_BASE || 'https://api.bolna.ai';
+    const base = (process.env.BOLNA_BASE || 'https://api.bolna.ai').replace(/\/+$/,'');
     const key  = process.env.BOLNA_API_KEY;
 
-    const r = await fetch(`${base}/executions/${encodeURIComponent(id)}`, {
-      headers: { Authorization: `Bearer ${key}` }
-    });
-    const rawText = await r.text();
-    let exec;
-    try { exec = rawText ? JSON.parse(rawText) : {}; } catch { exec = { raw: rawText }; }
-    if (!r.ok) {
-      return { statusCode: r.status, headers: corsHeaders(event), body: JSON.stringify({ error: 'provider_error', detail: exec }) };
+    // Set auth header globally via fetch init
+    const orig = await fetchExecution(`${base}`, key, id);
+    let execResp = orig;
+    let usedId = id;
+    let attempted = [{ id, status: orig.status }];
+
+    // If not found, try to discover a real execution id from our DB payload
+    if (!orig.ok && orig.status === 404) {
+      const { rows } = await query(`
+        SELECT payload
+        FROM docvai_calls
+        WHERE provider_call_id = $1
+        LIMIT 1
+      `, [id]);
+
+      if (rows.length) {
+        const p = rows[0].payload || {};
+        const alt =
+          p?.provider_start?.id ||
+          p?.provider_start?.call_id ||
+          p?.telephony_data?.provider_call_id ||
+          null;
+        if (alt && alt !== id) {
+          const retry = await fetch(`${base}/executions/${encodeURIComponent(alt)}`, {
+            headers: { Authorization: `Bearer ${key}` }
+          });
+          const t2 = await retry.text(); let j2; try { j2 = t2 ? JSON.parse(t2) : {}; } catch { j2 = { raw: t2 }; }
+          execResp = { ok: retry.ok, status: retry.status, data: j2, raw: t2 };
+          usedId = alt;
+          attempted.push({ id: alt, status: retry.status });
+        }
+      }
     }
 
-    const picked = normalizeExecution(exec);
-    // Always use the ID you asked for as the key; fall back to picked.provider_call_id
-    const keyId = id || picked.provider_call_id;
+    if (!execResp.ok) {
+      return {
+        statusCode: execResp.status || 502,
+        headers: corsHeaders(event),
+        body: JSON.stringify({ error: 'provider_error', detail: execResp.data, attempted })
+      };
+    }
 
-    // Upsert logic: only overwrite when the new value is non-null
+    const picked = normalizeExecution(execResp.data);
+
     await query(`
       INSERT INTO docvai_calls
         (provider_call_id, to_number, from_number, status, duration_sec, recording_url, transcript_text, payload, created_at)
       VALUES
         ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, NOW())
       ON CONFLICT (provider_call_id) DO UPDATE SET
-        to_number     = COALESCE(EXCLUDED.to_number,     docvai_calls.to_number),
-        from_number   = COALESCE(EXCLUDED.from_number,   docvai_calls.from_number),
-        status        = COALESCE(EXCLUDED.status,        docvai_calls.status),
-        duration_sec  = COALESCE(EXCLUDED.duration_sec,  docvai_calls.duration_sec),
-        recording_url = COALESCE(EXCLUDED.recording_url, docvai_calls.recording_url),
+        to_number       = COALESCE(EXCLUDED.to_number,       docvai_calls.to_number),
+        from_number     = COALESCE(EXCLUDED.from_number,     docvai_calls.from_number),
+        status          = COALESCE(EXCLUDED.status,          docvai_calls.status),
+        duration_sec    = COALESCE(EXCLUDED.duration_sec,    docvai_calls.duration_sec),
+        recording_url   = COALESCE(EXCLUDED.recording_url,   docvai_calls.recording_url),
         transcript_text = COALESCE(EXCLUDED.transcript_text, docvai_calls.transcript_text),
-        payload       = EXCLUDED.payload,
-        updated_at    = NOW()
+        payload         = EXCLUDED.payload
     `, [
-      keyId,
+      usedId,
       picked.to_number,
       picked.from_number,
       picked.status,
       picked.duration_sec,
       picked.recording_url,
       picked.transcript_text,
-      JSON.stringify(exec)
+      JSON.stringify(execResp.data)
     ]);
 
     return {
@@ -107,14 +123,13 @@ module.exports.handler = async (event) => {
       headers: corsHeaders(event),
       body: JSON.stringify({
         ok: true,
-        id: keyId,
+        id: usedId,
         extracted: {
           status: picked.status,
           duration_sec: picked.duration_sec,
           recording_url: picked.recording_url
         },
-        probe_status: r.status,
-        probe_url: `${base}/executions/${id}`
+        attempted
       })
     };
   } catch (e) {
