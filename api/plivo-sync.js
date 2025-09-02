@@ -2,7 +2,7 @@
 const { requireAuth, corsHeaders } = require('./_lib/auth');
 const { query } = require('./_lib/db');
 
-const fetchFn = (...args) => import('node-fetch').then(({ default: f }) => f(...args));
+const fetchFn = (...args) => fetch(...args));
 
 function basicAuthHeader(id, token) {
   const b64 = Buffer.from(`${id}:${token}`).toString('base64');
