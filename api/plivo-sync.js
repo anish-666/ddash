@@ -2,8 +2,10 @@
 const { requireAuth, corsHeaders } = require('./_lib/auth');
 const { query } = require('./_lib/db');
 
-const fetchFn = (...args) => fetch(...args));
+// Use Node 18+ native fetch
+const fetchFn = (...args) => fetch(...args);
 
+// --- helpers ---
 function basicAuthHeader(id, token) {
   const b64 = Buffer.from(`${id}:${token}`).toString('base64');
   return { Authorization: `Basic ${b64}` };
@@ -11,28 +13,24 @@ function basicAuthHeader(id, token) {
 
 function dtIsoMinutesAgo(mins) {
   const d = new Date(Date.now() - mins * 60 * 1000);
-  // Plivo accepts RFC3339-ish; keep it simple ISO without ms
   return d.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
 
 async function listCalls({ authId, token, sinceIso, limit = 50, offset = 0 }) {
-  // Try common CDR list route (direction=inbound, ended after since)
-  // NOTE: Endpoints vary slightly across accounts; we log attempts.
   const base = `https://api.plivo.com/v1/Account/${encodeURIComponent(authId)}`;
   const attempts = [];
 
-  // Candidate #1: Call list with filter params
+  // Candidate #1: filter by end_time__gt (common on Plivo)
   let url = `${base}/Call/?limit=${limit}&offset=${offset}&end_time__gt=${encodeURIComponent(sinceIso)}&direction=inbound`;
   let r = await fetchFn(url, { headers: basicAuthHeader(authId, token) });
   attempts.push({ url, status: r.status });
   if (r.ok) {
     const json = await r.json().catch(() => ({}));
-    // Plivo usually returns {objects:[...], meta:{...}}
     const arr = Array.isArray(json?.objects) ? json.objects : (Array.isArray(json) ? json : []);
     return { ok: true, items: arr, attempts, nextOffset: arr.length === limit ? offset + limit : null };
   }
 
-  // Candidate #2: Alternative date filter param name (start_time or add_time)
+  // Candidate #2: fallback to add_time__gt param
   url = `${base}/Call/?limit=${limit}&offset=${offset}&add_time__gt=${encodeURIComponent(sinceIso)}&direction=inbound`;
   r = await fetchFn(url, { headers: basicAuthHeader(authId, token) });
   attempts.push({ url, status: r.status });
@@ -59,7 +57,7 @@ async function listRecordingsForCall({ authId, token, callUuid }) {
     return { ok: true, items: arr, attempts };
   }
 
-  // Candidate #2: global recordings list, filter client-side (use recent)
+  // Candidate #2: global recordings list (recent), filter client-side
   const sinceIso = dtIsoMinutesAgo(24 * 60);
   url = `${base}/Recording/?add_time__gt=${encodeURIComponent(sinceIso)}`;
   r = await fetchFn(url, { headers: basicAuthHeader(authId, token) });
@@ -67,8 +65,7 @@ async function listRecordingsForCall({ authId, token, callUuid }) {
   if (r.ok) {
     const json = await r.json().catch(() => ({}));
     const arr = Array.isArray(json?.objects) ? json.objects : (Array.isArray(json) ? json : []);
-    // Filter by call_uuid match
-    const filtered = arr.filter(x => (x?.call_uuid || x?.call_uuid === '') && x.call_uuid === callUuid);
+    const filtered = arr.filter(x => (x?.call_uuid || '') === callUuid);
     return { ok: true, items: filtered, attempts };
   }
 
@@ -76,12 +73,10 @@ async function listRecordingsForCall({ authId, token, callUuid }) {
 }
 
 function pickFromCall(c) {
-  // Plivo CDR fields vary; normalize safely
   const call_uuid = c?.call_uuid || c?.uuid || c?.call_uuid_v2 || null;
   const to_number = c?.to_number || c?.to || c?.to_formatted || null;
   const from_number = c?.from_number || c?.from || c?.from_formatted || null;
   const direction = c?.direction || null;
-  // Prefer duration in seconds if present; fallback to bill_sec/total_amount style
   const dur =
     c?.total_duration_sec != null ? parseInt(c.total_duration_sec, 10) :
     c?.total_time != null ? parseInt(c.total_time, 10) :
@@ -103,19 +98,22 @@ function pickFromRecording(rec) {
     recording_url: rec?.recording_url || rec?.url || null,
     recording_duration_sec:
       rec?.recording_duration_ms != null ? Math.round(Number(rec.recording_duration_ms) / 1000) :
-      (rec?.recording_duration != null ? parseInt(rec.recording_duration, 10) : null),
+      (rec?.recording_duration != null ? parseInt(rec.recording_duration, 10) : null)
   };
 }
 
+// --- handler ---
 module.exports.handler = async (event) => {
   const method = event.httpMethod || event.requestContext?.http?.method || 'POST';
-  if (method === 'OPTIONS') return { statusCode: 200, headers: corsHeaders(event), body: '' };
+  if (method === 'OPTIONS') {
+    return { statusCode: 200, headers: corsHeaders(event), body: '' };
+  }
   if (method !== 'POST' && method !== 'GET') {
     return { statusCode: 405, headers: corsHeaders(event), body: JSON.stringify({ error: 'method_not_allowed' }) };
   }
 
   try {
-    // Let admins or DISABLE_AUTH=1 hit this
+    // allow DISABLE_AUTH=1 or admin header via requireAuth
     requireAuth(event);
 
     const authId = process.env.PLIVO_AUTH_ID;
@@ -133,34 +131,35 @@ module.exports.handler = async (event) => {
     let synced = 0;
     const debug = { sinceIso, pages: [], recordings_attempts: [] };
 
-    // Page through calls
+    // page through recent calls
     let offset = 0;
     for (let page = 0; page < 10; page++) {
       const list = await listCalls({ authId, token, sinceIso, limit, offset });
       debug.pages.push({ offset, attempts: list.attempts, count: list.items.length });
 
-      if (!list.ok) break;
-      if (!list.items.length) break;
+      if (!list.ok || !list.items.length) break;
 
       for (const c of list.items) {
         const norm = pickFromCall(c);
         if (!norm.call_uuid) continue;
 
-        // Only ingest inbound
+        // only inbound
         if (norm.direction && !/inbound/i.test(norm.direction)) continue;
 
-        // Look up recordings for this call
+        // recordings
         const recs = await listRecordingsForCall({ authId, token, callUuid: norm.call_uuid });
         debug.recordings_attempts.push({ call_uuid: norm.call_uuid, attempts: recs.attempts, count: recs.items.length });
 
-        // Choose the latest recording for the call (if multiple)
         let bestRec = null;
         if (Array.isArray(recs.items) && recs.items.length) {
-          bestRec = recs.items.sort((a, b) => (new Date(b?.add_time || b?.created_at || 0)) - (new Date(a?.add_time || a?.created_at || 0)))[0];
+          bestRec = recs.items.sort((a, b) => {
+            const ta = new Date(a?.add_time || a?.created_at || 0).getTime();
+            const tb = new Date(b?.add_time || b?.created_at || 0).getTime();
+            return tb - ta;
+          })[0];
         }
         const recInfo = bestRec ? pickFromRecording(bestRec) : { recording_url: null, recording_duration_sec: null };
 
-        // Upsert into docvai_calls keyed by provider_call_id = call_uuid
         await query(`
           INSERT INTO docvai_calls
             (provider_call_id, to_number, from_number, status, duration_sec, recording_url, transcript_text, payload, created_at)
@@ -177,7 +176,7 @@ module.exports.handler = async (event) => {
           norm.call_uuid,
           norm.to_number,
           norm.from_number,
-          'completed', // Plivo only lists completed/ended calls in CDR listing
+          'completed',
           norm.duration_sec || recInfo.recording_duration_sec || null,
           recInfo.recording_url,
           JSON.stringify({ plivo_cdr: c, plivo_recording: bestRec || null })
@@ -190,8 +189,16 @@ module.exports.handler = async (event) => {
       offset = list.nextOffset;
     }
 
-    return { statusCode: 200, headers: corsHeaders(event), body: JSON.stringify({ ok: true, synced, sinceIso, debug }) };
+    return {
+      statusCode: 200,
+      headers: corsHeaders(event),
+      body: JSON.stringify({ ok: true, synced, sinceIso, debug })
+    };
   } catch (e) {
-    return { statusCode: 500, headers: corsHeaders(event), body: JSON.stringify({ error: 'plivo_sync_failed', detail: e.message }) };
+    return {
+      statusCode: 500,
+      headers: corsHeaders(event),
+      body: JSON.stringify({ error: 'plivo_sync_failed', detail: e.message })
+    };
   }
 };
